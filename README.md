@@ -20,6 +20,7 @@ We will expand this README with a list of hyperparameters and options shortly.
 @article{UlyanovVL17,
     author    = {Ulyanov, Dmitry and Vedaldi, Andrea and Lempitsky, Victor},
     title     = {Deep image prior},
+    journal   = {arXiv:1711.10925},
     year      = {2017}
 }
 ```
