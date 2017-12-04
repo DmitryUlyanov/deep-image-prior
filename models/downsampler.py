@@ -88,8 +88,8 @@ def get_kernel(factor, kernel_type, phase, kernel_width, support=None, sigma=Non
         assert sigma, 'sigma is not specified'
         assert phase != 0.5, 'phase 1/2 for gauss not implemented'
         
-        print(center, kernel_width)
         center = (kernel_width + 1.)/2.
+        print(center, kernel_width)
         sigma_sq =  sigma * sigma
         
         for i in range(1, kernel.shape[0] + 1):
