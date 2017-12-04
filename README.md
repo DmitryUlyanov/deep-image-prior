@@ -15,6 +15,21 @@ Here we provide hyperparameters and architectures, that were used to generate th
 
 We will expand this README with a list of hyperparameters and options shortly.
 
+# Install
+
+Here is the list of libraries you need to install to execute the code:
+- [pytorch](http://pytorch.org/) > 0.2
+- numpy
+- scipy
+- matplotlib
+- scikit-image
+- jupyter
+
+All of them can be installed via `conda` (`anaconda`), e.g.
+```
+conda install jupyter
+```
+
 # Citation
 ```
 @article{UlyanovVL17,
