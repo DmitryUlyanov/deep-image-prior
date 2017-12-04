@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image
 import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
-from common_utils import *
+from .common_utils import *
 
 def get_text_mask(for_image, sz=20):
     font_fname = '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf'

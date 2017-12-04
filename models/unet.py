@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from common import * 
+from .common import * 
 
 class ListModule(nn.Module):
     def __init__(self, *args):

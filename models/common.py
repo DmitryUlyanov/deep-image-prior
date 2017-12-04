@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from downsampler import Downsampler
+from .downsampler import Downsampler
 
 def add_module(self, module):
     self.add_module(str(len(self) + 1), module)
@@ -96,7 +96,7 @@ def conv(in_f, out_f, kernel_size, stride=1, bias=True, pad='zero', downsample_m
         stride = 1
 
     padder = None
-    to_pad = (kernel_size - 1) / 2
+    to_pad = int((kernel_size - 1) / 2)
     if pad == 'reflection':
         padder = nn.ReflectionPad2d(to_pad)
         to_pad = 0

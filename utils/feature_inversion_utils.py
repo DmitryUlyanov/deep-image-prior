@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 import torchvision.models as models
-from matcher import Matcher
+from .matcher import Matcher
 import os
 from collections import OrderedDict
 
