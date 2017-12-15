@@ -18,10 +18,10 @@ def crop_image(img, d=32):
                 img.size[1] - img.size[1] % d)
 
     bbox = [
-            (img.size[0] - new_size[0])/2, 
-            (img.size[1] - new_size[1])/2,
-            (img.size[0] + new_size[0])/2,
-            (img.size[1] + new_size[1])/2,
+            int((img.size[0] - new_size[0])/2), 
+            int((img.size[1] - new_size[1])/2),
+            int((img.size[0] + new_size[0])/2),
+            int((img.size[1] + new_size[1])/2),
     ]
 
     img_cropped = img.crop(bbox)
