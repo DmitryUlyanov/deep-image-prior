@@ -4,10 +4,10 @@ def put_in_center(img_np, target_size):
     img_out = np.zeros([3, target_size[0], target_size[1]])
     
     bbox = [
-            (target_size[0] - img_np.shape[1]) / 2,
-            (target_size[1] - img_np.shape[2]) / 2,
-            (target_size[0] + img_np.shape[1]) / 2,
-            (target_size[1] + img_np.shape[2]) / 2,
+            int((target_size[0] - img_np.shape[1]) / 2),
+            int((target_size[1] - img_np.shape[2]) / 2),
+            int((target_size[0] + img_np.shape[1]) / 2),
+            int((target_size[1] + img_np.shape[2]) / 2),
     ]
     
     img_out[:, bbox[0]:bbox[2], bbox[1]:bbox[3]] = img_np

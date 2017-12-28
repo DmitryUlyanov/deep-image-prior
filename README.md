@@ -7,7 +7,7 @@ In this repository we provide *Jupyter Notebooks* to reproduce each figure from 
 >Dmitry Ulyanov, Andrea Vedaldi, Victor Lempitsky
 
 
-[[paper]](http://sites.skoltech.ru/app/data/uploads/sites/25/2017/11/deep_image_prior.pdf) [[supmat]](https://box.skoltech.ru/index.php/s/ib52BOoV58ztuPM) [[project page]](https://dmitryulyanov.github.io/deep_image_prior)
+[[paper]](https://sites.skoltech.ru/app/data/uploads/sites/25/2017/12/deep_image_prior.pdf) [[supmat]](https://box.skoltech.ru/index.php/s/ib52BOoV58ztuPM) [[project page]](https://dmitryulyanov.github.io/deep_image_prior)
 
 ![](data/teaser_compiled.png)
 
