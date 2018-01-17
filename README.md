@@ -30,6 +30,23 @@ All of them can be installed via `conda` (`anaconda`), e.g.
 conda install jupyter
 ```
 
+## Docker image
+
+Alternatively, you can use a Docker image that exposes a Jupyter Notebook with all required dependencies. To build this image ensure you have both [docker](https://www.docker.com/) and  [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) installed, then run
+
+```
+nvidia-docker build -t deep-image-prior .
+```
+
+After the build you can start the container as
+
+```
+nvidia-docker run --rm -it --ipc=host -p 8888:8888 deep-image-prior
+```
+
+you will be provided an URL through which you can connect to the Jupyter notebook.
+
+
 # Citation
 ```
 @article{UlyanovVL17,
