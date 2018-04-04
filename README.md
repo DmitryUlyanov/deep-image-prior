@@ -4,12 +4,14 @@ In this repository we provide *Jupyter Notebooks* to reproduce each figure from 
 
 > **Deep Image Prior**
 
->Dmitry Ulyanov, Andrea Vedaldi, Victor Lempitsky
+> CVPR 2018
+
+> Dmitry Ulyanov, Andrea Vedaldi, Victor Lempitsky
 
 
-[[paper]](https://sites.skoltech.ru/app/data/uploads/sites/25/2017/12/deep_image_prior.pdf) [[supmat]](https://box.skoltech.ru/index.php/s/ib52BOoV58ztuPM) [[project page]](https://dmitryulyanov.github.io/deep_image_prior)
+[[paper]](https://sites.skoltech.ru/app/data/uploads/sites/25/2018/04/deep_image_prior.pdf) [[supmat]](https://box.skoltech.ru/index.php/s/ib52BOoV58ztuPM) [[project page]](https://dmitryulyanov.github.io/deep_image_prior)
 
-![](data/teaser_compiled.png)
+![](data/teaser_compiled.jpg)
 
 Here we provide hyperparameters and architectures, that were used to generate the figures. Most of them are far from optimal. Do not hesitate to change them and see the effect.
 
