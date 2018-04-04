@@ -32,26 +32,23 @@ class ListModule(nn.Module):
 class UNet(nn.Module):
     '''
         upsample_mode in ['deconv', 'nearest', 'bilinear']
-        pad in ['zero', 'replication']
+        pad in ['zero', 'replication', 'none']
     '''
     def __init__(self, num_input_channels=3, num_output_channels=3, 
                        feature_scale=4, more_layers=0, concat_x=False,
                        upsample_mode='deconv', pad='zero', norm_layer=nn.InstanceNorm2d, need_sigmoid=True, need_bias=True):
         super(UNet, self).__init__()
-        # self.is_deconv = is_deconv
-        # self.in_channels = in_channels
-        # self.is_batchnorm = is_batchnorm
+
         self.feature_scale = feature_scale
         self.more_layers = more_layers
         self.concat_x = concat_x
 
 
         filters = [64, 128, 256, 512, 1024]
-        filters = [x / self.feature_scale for x in filters]
+        filters = [x // self.feature_scale for x in filters]
 
         self.start = unetConv2(num_input_channels, filters[0] if not concat_x else filters[0] - num_input_channels, norm_layer, need_bias, pad)
 
-        # self.down1 = unetDown(self.in_channels, filters[0], self.is_batchnorm)
         self.down1 = unetDown(filters[0], filters[1] if not concat_x else filters[1] - num_input_channels, norm_layer, need_bias, pad)
         self.down2 = unetDown(filters[1], filters[2] if not concat_x else filters[2] - num_input_channels, norm_layer, need_bias, pad)
         self.down3 = unetDown(filters[2], filters[3] if not concat_x else filters[3] - num_input_channels, norm_layer, need_bias, pad)
@@ -114,18 +111,13 @@ class UNet(nn.Module):
 
                 prevs.append(out)
 
-            # for p in prevs:
-            #     print(p.size())
-
             up_ = self.more_ups[-1](prevs[-1], prevs[-2])
             for idx in range(self.more_layers - 1):
-                # print (self.more - idx - 3)
                 l = self.more_ups[self.more - idx - 2]
                 up_= l(up_, prevs[self.more - idx - 2])
         else:
             up_= down4
 
-        # print(down4.size(), down3.size())
         up4= self.up4(up_, down3)
         up3= self.up3(up4, down2)
         up2= self.up2(up3, down1)
@@ -139,6 +131,7 @@ class unetConv2(nn.Module):
     def __init__(self, in_size, out_size, norm_layer, need_bias, pad):
         super(unetConv2, self).__init__()
 
+        print(pad)
         if norm_layer is not None:
             self.conv1= nn.Sequential(conv(in_size, out_size, 3, bias=need_bias, pad=pad),
                                        norm_layer(out_size),
@@ -185,18 +178,15 @@ class unetUp(nn.Module):
             assert False
 
     def forward(self, inputs1, inputs2):
-        # print('===', inputs1.size(), inputs2.size(),self.up)
-        # outputs2 = inputs2
-        # if inputs2.size(3) != inputs1.size(3):
-
         in1_up= self.up(inputs1)
-        # print(in1_up.size())
-        # offset = outputs2.size()[2] - inputs1.size()[2]
-        # padding = 2*[offset // 2, offset // 2 + 1]
-        # print(padding)
-        # outputs1 = F.pad(inputs1, padding)
-        # print(in1_up.size())
-        # print('++++', in1_up.size(), inputs2.size())
-        output= self.conv(torch.cat([in1_up, inputs2], 1))
-        # output = self.up(
+        
+        if (inputs2.size(2) != in1_up.size(2)) or (inputs2.size(3) != in1_up.size(3)):
+            diff2 = (inputs2.size(2) - in1_up.size(2)) // 2 
+            diff3 = (inputs2.size(3) - in1_up.size(3)) // 2 
+            inputs2_ = inputs2[:, :, diff2 : diff2 + in1_up.size(2), diff3 : diff3 + in1_up.size(3)]
+        else:
+            inputs2_ = inputs2
+
+        output= self.conv(torch.cat([in1_up, inputs2_], 1))
+
         return output
