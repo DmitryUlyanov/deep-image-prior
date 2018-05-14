@@ -1,3 +1,5 @@
+**Warning!** The optimization may not converge on some GPUs. We've personnaly experienced issues on Tesla P100 and P40 GPUs. When running the code, make sure you get similar results to the paper first. Easiest to check using text inpainting notebook.  
+
 # Deep image prior
 
 In this repository we provide *Jupyter Notebooks* to reproduce each figure from the paper:
