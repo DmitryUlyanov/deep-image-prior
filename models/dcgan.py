@@ -3,9 +3,9 @@ import torch.nn as nn
 
 def dcgan(inp=2,
           ndf=32,
-          num_ups=4, need_sigmoid=True, need_bias=True, pad='zero', need_convT = True):
+          num_ups=4, need_sigmoid=True, need_bias=True, pad='zero', upsample_mode='nearest', need_convT = True):
     
-    layers= [nn.ConvTranspose2d(inp, ndf, kernel_size=4, stride=1, padding=0, bias=False),
+    layers= [nn.ConvTranspose2d(inp, ndf, kernel_size=3, stride=1, padding=0, bias=False),
              nn.BatchNorm2d(ndf),
              nn.LeakyReLU(True)]
     
@@ -15,7 +15,7 @@ def dcgan(inp=2,
                         nn.BatchNorm2d(ndf),
                         nn.LeakyReLU(True)]
         else:
-            layers += [ nn.Upsample(scale_factor=2, mode='nearest'),
+            layers += [ nn.Upsample(scale_factor=2, mode=upsample_mode),
                         nn.Conv2d(ndf, ndf, kernel_size=3, stride=1, padding=1, bias=False),
                         nn.BatchNorm2d(ndf),
                         nn.LeakyReLU(True)]

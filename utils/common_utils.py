@@ -145,7 +145,7 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
         assert input_depth == 2
         X, Y = np.meshgrid(np.arange(0, spatial_size[1])/float(spatial_size[1]-1), np.arange(0, spatial_size[0])/float(spatial_size[0]-1))
         meshgrid = np.concatenate([X[None,:], Y[None,:]])
-        net_input=  np_to_var(meshgrid)
+        net_input=  np_to_torch(meshgrid)
     else:
         assert False
         
@@ -179,26 +179,19 @@ def np_to_pil(img_np):
 
     return Image.fromarray(ar)
 
-def np_to_tensor(img_np):
+def np_to_torch(img_np):
     '''Converts image in numpy.array to torch.Tensor.
 
     From C x W x H [0..1] to  C x W x H [0..1]
     '''
-    return torch.from_numpy(img_np)
+    return torch.from_numpy(img_np)[None, :]
 
-def np_to_var(img_np, dtype = torch.cuda.FloatTensor):
-    '''Converts image in numpy.array to torch.Variable.
-    
-    From C x W x H [0..1] to  1 x C x W x H [0..1]
-    '''
-    return Variable(np_to_tensor(img_np)[None, :])
-
-def var_to_np(img_var):
+def torch_to_np(img_var):
     '''Converts an image in torch.Variable format to np.array.
 
     From 1 x C x W x H [0..1] to  C x W x H [0..1]
     '''
-    return img_var.data.cpu().numpy()[0]
+    return img_var.detach().cpu().numpy()[0]
 
 
 def optimize(optimizer_type, parameters, closure, LR, num_iter):
