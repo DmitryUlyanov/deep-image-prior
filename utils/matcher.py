@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 class Matcher:
     def __init__(self, how='gram_matrix', loss='mse'):
@@ -24,10 +23,9 @@ class Matcher:
 
         self.statistics = statistics
         if self.mode == 'store':
-            # print(statistics[0,0,0])
-            self.stored[module] = statistics.data.clone()
+            self.stored[module] = statistics.detach().clone()
         elif self.mode == 'match':
-            self.losses[module] = self.loss(statistics, Variable(self.stored[module]))
+            self.losses[module] = self.loss(statistics, self.stored[module])
 
     def clean(self):
         self.losses = {}

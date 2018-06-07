@@ -3,7 +3,6 @@ import torch.nn as nn
 import torchvision
 import sys
 
-from torch.autograd import Variable
 import numpy as np
 from PIL import Image
 import PIL
@@ -33,7 +32,7 @@ def get_params(opt_over, net, net_input, downsampler=None):
     Args:
         opt_over: comma separated list, e.g. "net,input" or "net"
         net: network
-        net_input: torch.Variable that stores input `z`
+        net_input: torch.Tensor that stores input `z`
     '''
     opt_over_list = opt_over.split(',')
     params = []
@@ -60,7 +59,7 @@ def get_image_grid(images_np, nrow=8):
     
     return torch_grid.numpy()
 
-def plot_image_grid(images_np, nrow =8, factor=1, interpolation=None):
+def plot_image_grid(images_np, nrow =8, factor=1, interpolation='lanczos'):
     """Draws images in a grid
     
     Args:
@@ -76,11 +75,13 @@ def plot_image_grid(images_np, nrow =8, factor=1, interpolation=None):
 
     grid = get_image_grid(images_np, nrow)
     
-    plt.figure(figsize=(len(images_np)+factor,12+factor))
+    plt.figure(figsize=(len(images_np) + factor, 12 + factor))
+    
     if images_np[0].shape[0] == 1:
         plt.imshow(grid[0], cmap='gray', interpolation=interpolation)
     else:
-        plt.imshow(grid.transpose(1,2,0), interpolation=interpolation)
+        plt.imshow(grid.transpose(1, 2, 0), interpolation=interpolation)
+    
     plt.show()
     
     return grid
@@ -103,7 +104,7 @@ def get_image(path, imsize=-1):
         imsize = (imsize, imsize)
 
     if imsize[0]!= -1 and img.size != imsize:
-        if imsize[0] > img.size:
+        if imsize[0] > img.size[0]:
             img = img.resize(imsize, Image.BICUBIC)
         else:
             img = img.resize(imsize, Image.ANTIALIAS)
@@ -124,7 +125,7 @@ def fill_noise(x, noise_type):
         assert False
 
 def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
-    """Returns a pytorch.Variable of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
+    """Returns a pytorch.Tensor of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
     initialized in a specific way.
     Args:
         input_depth: number of channels in the tensor
@@ -137,10 +138,10 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
         spatial_size = (spatial_size, spatial_size)
     if method == 'noise':
         shape = [1, input_depth, spatial_size[0], spatial_size[1]]
-        net_input = Variable(torch.zeros(shape))
+        net_input = torch.zeros(shape)
         
-        fill_noise(net_input.data, noise_type)
-        net_input.data *= var            
+        fill_noise(net_input, noise_type)
+        net_input *= var            
     elif method == 'meshgrid': 
         assert input_depth == 2
         X, Y = np.meshgrid(np.arange(0, spatial_size[1])/float(spatial_size[1]-1), np.arange(0, spatial_size[0])/float(spatial_size[0]-1))
@@ -163,7 +164,7 @@ def pil_to_np(img_PIL):
     else:
         ar = ar[None, ...]
 
-    return ar.astype(np.float32)/255.
+    return ar.astype(np.float32) / 255.
 
 def np_to_pil(img_np): 
     '''Converts image in np.array format to PIL image.
@@ -175,7 +176,7 @@ def np_to_pil(img_np):
     if img_np.shape[0] == 1:
         ar = ar[0]
     else:
-        ar = ar.transpose(1,2,0)
+        ar = ar.transpose(1, 2, 0)
 
     return Image.fromarray(ar)
 
@@ -187,7 +188,7 @@ def np_to_torch(img_np):
     return torch.from_numpy(img_np)[None, :]
 
 def torch_to_np(img_var):
-    '''Converts an image in torch.Variable format to np.array.
+    '''Converts an image in torch.Tensor format to np.array.
 
     From 1 x C x W x H [0..1] to  C x W x H [0..1]
     '''
@@ -199,7 +200,7 @@ def optimize(optimizer_type, parameters, closure, LR, num_iter):
 
     Args:
         optimizer_type: 'LBFGS' of 'adam'
-        parameters: list of Variables to optimize over
+        parameters: list of Tensors to optimize over
         closure: function, that returns loss variable
         LR: learning rate
         num_iter: number of iterations 

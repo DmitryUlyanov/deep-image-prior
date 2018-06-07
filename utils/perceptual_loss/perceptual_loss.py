@@ -167,7 +167,7 @@ vgg_mean = torch.FloatTensor([103.939, 116.779, 123.680]).view(3, 1, 1)
 def vgg_preprocess_caffe(var):
     (r, g, b) = torch.chunk(var, 3, dim=1)
     bgr = torch.cat((b, g, r), 1)
-    out = bgr * 255 - torch.autograd.Variable(vgg_mean).type(var.data.type())
+    out = bgr * 255 - torch.autograd.Variable(vgg_mean).type(var.type())
     return out
 
 
@@ -176,7 +176,7 @@ mean_pytorch = Variable(torch.Tensor([0.485, 0.456, 0.406]).view(3, 1, 1))
 std_pytorch =  Variable(torch.Tensor([0.229, 0.224, 0.225]).view(3, 1, 1))
 
 def vgg_preprocess_pytorch(var):
-    return (var - mean_pytorch.type_as(var.data))/std_pytorch.type_as(var.data)
+    return (var - mean_pytorch.type_as(var))/std_pytorch.type_as(var)
 
 
 

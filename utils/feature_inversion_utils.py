@@ -23,11 +23,6 @@ def get_vanilla_vgg_features(cut_idx=-1):
         vgg_weights = OrderedDict([(map[k] if k in map else k,v) for k,v in vgg_weights.iteritems()])
 
         
-        
-
-        # for k in vgg_weights.keys():
-        #     if 'classifier' in k:
-        #         del vgg_weights[k]
 
         model = models.vgg19()
         model.classifier = nn.Sequential(View(), *model.classifier._modules.values())
@@ -48,17 +43,8 @@ def get_vanilla_vgg_features(cut_idx=-1):
     return vgg
 
 
-# def get_vgg_features():
-#     models.vgg19(pretrained=True)
-#     nn.Sequential(models.vgg19(pretrained=True).features,
-#                   nn.View()
-#                   models.vgg19(pretrained=True).features
-
-#     return vgg
-
 def get_matcher(net, opt):
     idxs = [x for x in opt['layers'].split(',')]
-    # idxs = [int(x) for x in opt['layers'].split(',')]
     matcher = Matcher(opt['what'])
 
     def hook(module, input, output):
@@ -85,7 +71,7 @@ def get_vgg(cut_idx=-1):
 def vgg_preprocess_var(var):
         (r, g, b) = torch.chunk(var, 3, dim=1)
         bgr = torch.cat((b, g, r), 1)
-        out = bgr * 255 - torch.autograd.Variable(vgg_mean[None, ...]).type(var.data.type()).expand_as(bgr)
+        out = bgr * 255 - torch.autograd.Variable(vgg_mean[None, ...]).type(var.type()).expand_as(bgr)
         return out
 
 vgg_mean = torch.FloatTensor([103.939, 116.779, 123.680]).view(3, 1, 1)
@@ -99,7 +85,7 @@ def get_preprocessor(imsize):
         out = bgr * 255 - vgg_mean.type(tensor.type()).expand_as(bgr)
         return out
     preprocess = transforms.Compose([
-        transforms.Scale(imsize),
+        transforms.Resize(imsize),
         transforms.ToTensor(),
         transforms.Lambda(vgg_preprocess)
     ])
@@ -119,14 +105,3 @@ def get_deprocessor():
         transforms.ToPILImage()
     ])
     return deprocess
-
-def get_pretrained_net(name):
-    """Loads pretrained network, converted from Caffe."""
-    if name == 'alexnet':
-        os.system('wget -O data/feature_inversion/alexnet-caffe.pth --no-check-certificate -nc https://www.dropbox.com/s/e30k2myjdyhsxes/alexnet-caffe.pth?dl=1')
-        return torch.load('data/feature_inversion/alexnet-caffe.pth')
-    elif name == 'vgg19':
-        os.system('wget -O data/feature_inversion/vgg19-caffe.pth --no-check-certificate -nc https://www.dropbox.com/s/xlbdo688dy4keyk/vgg19-caffe.pth?dl=1')
-        return torch.load('data/feature_inversion/vgg19-caffe.pth')
-    else:
-        assert False
