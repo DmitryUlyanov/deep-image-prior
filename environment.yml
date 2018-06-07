@@ -1,6 +1,5 @@
 name: deep-image-prior
 channels:
-- soumith
 - pytorch
 - defaults
 dependencies:
@@ -12,8 +11,7 @@ dependencies:
 - setuptools
 - cmake
 - cffi
-- magma-cuda80
-- pytorch=0.2
+- pytorch=0.4
 - matplotlib
 - scikit-image
 - torchvision
