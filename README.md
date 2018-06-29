@@ -1,4 +1,4 @@
-**Warning!** The optimization may not converge on some GPUs. We've personnaly experienced issues on Tesla V100 and P40 GPUs. When running the code, make sure you get similar results to the paper first. Easiest to check using text inpainting notebook.  
+**Warning!** The optimization may not converge on some GPUs. We've personnaly experienced issues on Tesla V100 and P40 GPUs. When running the code, make sure you get similar results to the paper first. Easiest to check using text inpainting notebook.  Try to set double precision mode or turn off cudnn. 
 
 # Deep image prior
 
