@@ -35,6 +35,13 @@ All of them can be installed via `conda` (`anaconda`), e.g.
 conda install jupyter
 ```
 
+
+or create an conda env with all dependencies via environment file
+
+```
+conda env create -f environment.yml
+```
+
 ## Docker image
 
 Alternatively, you can use a Docker image that exposes a Jupyter Notebook with all required dependencies. To build this image ensure you have both [docker](https://www.docker.com/) and  [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) installed, then run
