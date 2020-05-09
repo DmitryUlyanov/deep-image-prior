@@ -58,6 +58,10 @@ nvidia-docker run --rm -it --ipc=host -p 8888:8888 deep-image-prior
 
 you will be provided an URL through which you can connect to the Jupyter notebook.
 
+## Google Colab
+
+To run it using Google Colab, click [here](https://colab.research.google.com/github/DmitryUlyanov/deep-image-prior) and select the notebook to run. Remember to uncomment the first cell to clone the repository into colab's environment.
+
 
 # Citation
 ```
