@@ -1,4 +1,5 @@
 # This script had been used to get the numbers in the paper
+import numpy as np
 from utils.common_utils import get_image, plot_image_grid
 import cv2
 def rgb2ycbcr(im_rgb):
