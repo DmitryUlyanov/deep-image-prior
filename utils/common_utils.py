@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 import PIL
 import numpy as np
-
+import tqdm
 import matplotlib.pyplot as plt
 
 def crop_image(img, d=32):
@@ -146,7 +146,15 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
         assert input_depth == 2
         X, Y = np.meshgrid(np.arange(0, spatial_size[1])/float(spatial_size[1]-1), np.arange(0, spatial_size[0])/float(spatial_size[0]-1))
         meshgrid = np.concatenate([X[None,:], Y[None,:]])
-        net_input=  np_to_torch(meshgrid)
+        net_input = np_to_torch(meshgrid)
+    elif method == 'fourier':
+        X, Y = np.meshgrid(np.arange(0, spatial_size[1]) / float(spatial_size[1] - 1),
+                           np.arange(0, spatial_size[0]) / float(spatial_size[0] - 1))
+        meshgrid_np = np.concatenate([X[None, :], Y[None, :]])
+        meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
+        embed_fn, input_ch = get_embedder(multires=5)
+        net_input = embed_fn(meshgrid).permute(0, 3, 1, 2)
+        input_depth = input_ch
     else:
         assert False
         
@@ -224,9 +232,60 @@ def optimize(optimizer_type, parameters, closure, LR, num_iter):
         print('Starting optimization with ADAM')
         optimizer = torch.optim.Adam(parameters, lr=LR)
         
-        for j in range(num_iter):
+        for j in tqdm.tqdm(range(num_iter)):
             optimizer.zero_grad()
             closure()
             optimizer.step()
     else:
         assert False
+
+
+class Embedder:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.create_embedding_fn()
+
+    def create_embedding_fn(self):
+        embed_fns = []
+        d = self.kwargs['input_dims']
+        out_dim = 0
+        if self.kwargs['include_input']:
+            embed_fns.append(lambda x: x)
+            out_dim += d
+
+        max_freq = self.kwargs['max_freq_log2']
+        N_freqs = self.kwargs['num_freqs']
+
+        if self.kwargs['log_sampling']:
+            freq_bands = 2. ** torch.linspace(0., max_freq, steps=N_freqs)
+        else:
+            freq_bands = torch.linspace(2. ** 0., 2. ** max_freq, steps=N_freqs)
+
+        for freq in freq_bands:
+            for p_fn in self.kwargs['periodic_fns']:
+                embed_fns.append(lambda x, p_fn=p_fn, freq=freq: p_fn(x * freq))
+                out_dim += d
+
+        self.embed_fns = embed_fns
+        self.out_dim = out_dim
+
+    def embed(self, inputs):
+        return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
+
+
+def get_embedder(multires=10, i=0):
+    if i == -1:
+        return nn.Identity(), 3
+
+    embed_kwargs = {
+        'include_input': True,
+        'input_dims': 2,
+        'max_freq_log2': multires - 1,
+        'num_freqs': multires,
+        'log_sampling': True,
+        'periodic_fns': [torch.sin, torch.cos],
+    }
+
+    embedder_obj = Embedder(**embed_kwargs)
+    embed = lambda x, eo=embedder_obj: eo.embed(x)
+    return embed, embedder_obj.out_dim
