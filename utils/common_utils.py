@@ -158,7 +158,7 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
     else:
         assert False
         
-    return net_input
+    return net_input, input_depth
 
 def pil_to_np(img_PIL):
     '''Converts image in PIL format to np.array.

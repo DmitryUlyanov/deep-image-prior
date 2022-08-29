@@ -43,7 +43,7 @@ if PLOT:
 
 input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier'][-1]
+INPUT = ['meshgrid', 'noise', 'fourier'][1]
 pad = 'reflection'
 OPT_OVER = 'net'
 KERNEL_TYPE = 'lanczos2'
@@ -54,7 +54,7 @@ tv_weight = 0.0
 OPTIMIZER = 'adam'
 
 if factor == 4:
-    num_iter = 2000
+    num_iter = 8000
     reg_noise_std = 0.03
 elif factor == 8:
     num_iter = 4000
@@ -62,7 +62,11 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype).detach()
+print('Input is {}, Depth = {}'.format(INPUT, input_depth))
+net_input, input_depth = \
+    get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]))
+
+net_input = net_input.type(dtype).detach()
 
 NET_TYPE = 'skip' # UNet, ResNet
 net = get_net(input_depth, 'skip', pad,
@@ -140,7 +144,7 @@ plot_image_grid([imgs['HR_np'],
 
 fig, axes = plt.subplots(1, 2)
 axes[0].plot([h[0] for h in psnr_history])
-axes[0].set_title('LR PSNR')
+axes[0].set_title('LR PSNR\nmax: {:.3f}'.format(max([h[0] for h in psnr_history])))
 axes[1].plot([h[1] for h in psnr_history])
-axes[1].set_title('HR PSNR')
+axes[1].set_title('HR PSNR\nmax: {:.3f}'.format(max([h[1] for h in psnr_history])))
 plt.show()
