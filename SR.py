@@ -43,7 +43,7 @@ if PLOT:
 
 input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier'][1]
+INPUT = ['meshgrid', 'noise', 'fourier'][-1]
 pad = 'reflection'
 OPT_OVER = 'net'
 KERNEL_TYPE = 'lanczos2'
@@ -62,10 +62,10 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 net_input, input_depth = \
     get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]))
 
+print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 net_input = net_input.type(dtype).detach()
 
 NET_TYPE = 'skip' # UNet, ResNet
