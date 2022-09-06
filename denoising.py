@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0)
+parser.add_argument('--input_index', default=0)
 args = parser.parse_args()
 
 
@@ -60,7 +61,7 @@ else:
     assert False
 
 
-INPUT = 'noise'  #'fourier'  #   # 'meshgrid'
+INPUT = ['noise', 'fourier', 'meshgrid'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net'  # 'net,input'
 
