@@ -200,7 +200,7 @@ log_config = {
 }
 run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
-                     tags=['{}'.format(INPUT)],
+                     tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
                      name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
                      job_type='train',
                      group='Denoising',

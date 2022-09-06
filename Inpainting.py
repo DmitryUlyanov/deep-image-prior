@@ -11,36 +11,47 @@ from models.skip import skip
 import torch
 import torch.optim
 import wandb
+import argparse
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
-
-
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--config')
+parser.add_argument('--gpu', default='1')
+parser.add_argument('--index', default=0, type=int)
+args = parser.parse_args()
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 PLOT = True
 imsize = -1
 dim_div_by = 64
 
-## Fig 6
-# img_path  = 'data/inpainting/vase.png'
-# mask_path = 'data/inpainting/vase_mask.png'
 
-## Fig 8
-img_path  = 'data/inpainting/library.png'
-mask_path = 'data/inpainting/library_mask.png'
+img_dict = {
+    0: {  # Fig 6
+            'img_path': 'data/inpainting/vase.png',
+            'mask_path': 'data/inpainting/vase_mask.png'
+    },
+    1: {  # Fig 7 (top)
+        'img_path': 'data/inpainting/kate.png',
+        'mask_path': 'data/inpainting/kate_mask.png'
+    },
+    2: {  # Fig 8
+        'img_path': 'data/inpainting/library.png',
+        'mask_path': 'data/inpainting/library_mask.png'
+    },
+    3: {
+        'img_path': 'data/inpainting/peppers.png',
+        'mask_path': 'data/inpainting/peppers_mask.png'
 
-## Fig 7 (top)
-# img_path = 'data/inpainting/kate.png'
-# mask_path = 'data/inpainting/kate_mask.png'
+    }
+}
 
-# Another text inpainting example
-# img_path  = 'data/inpainting/peppers.png'
-# mask_path = 'data/inpainting/peppers_mask.png'
-
+img_path = img_dict[args.index]['img_path']
+mask_path = img_dict[args.index]['mask_path']
 NET_TYPE = 'skip_depth6'  # one of skip_depth4|skip_depth2|UNET|ResNet
 
 img_pil, img_np = get_image(img_path, imsize)
@@ -54,15 +65,15 @@ img_mask_np = pil_to_np(img_mask_pil)
 
 img_mask_var = np_to_torch(img_mask_np).type(dtype)
 
-plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11);
+plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 pad = 'reflection'  # 'zero'
 OPT_OVER = 'net'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
-    INPUT = 'meshgrid'
-    input_depth = 2
+    INPUT = 'fourier' #'meshgrid'
+    input_depth = 32
     LR = 0.01
     num_iter = 5001
     param_noise = False
@@ -79,10 +90,10 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'noise' #'fourier'
+    INPUT = 'noise'  # 'fourier'
     input_depth = 32
     LR = 0.01
-    num_iter = 5001
+    num_iter = 10001
     param_noise = False
     show_every = 50
     figsize = 5
@@ -212,7 +223,31 @@ def closure():
 
     i += 1
 
+    wandb.log({'training loss': total_loss.item()}, commit=True)
     return total_loss
+
+
+log_config = {
+    "learning_rate": LR,
+    "epochs": num_iter,
+    'optimizer': OPTIMIZER,
+    'loss': type(mse).__name__,
+    'input depth': input_depth,
+    'input type': INPUT,
+}
+
+run = wandb.init(project="Fourier features DIP",
+                 entity="impliciteam",
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
+                 name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
+                 job_type='train',
+                 group='Inpainting',
+                 mode='online',
+                 save_code=True,
+                 config=log_config,
+                 notes='Input type {}, depth {}'.format(INPUT, input_depth))
+
+wandb.run.log_code(".")
 
 
 net_input_saved = net_input.detach().clone()
