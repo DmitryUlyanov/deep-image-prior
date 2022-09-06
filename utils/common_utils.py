@@ -4,6 +4,7 @@ import torchvision
 import sys
 
 import numpy as np
+import rff
 from PIL import Image
 import PIL
 import numpy as np
@@ -152,13 +153,11 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
                            np.arange(0, spatial_size[0]) / float(spatial_size[0] - 1))
         meshgrid_np = np.concatenate([X[None, :], Y[None, :]])
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
-        embed_fn, input_ch = get_embedder(multires=10)
-        net_input = embed_fn(meshgrid).permute(0, 3, 1, 2)
-        input_depth = input_ch
+        net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
     else:
         assert False
         
-    return net_input, input_depth
+    return net_input
 
 def pil_to_np(img_PIL):
     '''Converts image in PIL format to np.array.
