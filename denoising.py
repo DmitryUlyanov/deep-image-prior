@@ -2,7 +2,7 @@ from __future__ import print_function
 
 from models import *
 from utils.denoising_utils import *
-
+from utils.wandb_utils import *
 import torch
 import torch.optim
 import matplotlib.pyplot as plt
@@ -22,8 +22,8 @@ dtype = torch.cuda.FloatTensor
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
-parser.add_argument('--index', default=0)
-parser.add_argument('--input_index', default=0)
+parser.add_argument('--index', default=0, type=int)
+parser.add_argument('--input_index', default=0, type=int)
 args = parser.parse_args()
 
 
@@ -32,7 +32,7 @@ imsize = -1
 PLOT = True
 sigma = 25
 sigma_ = sigma/255.
-train_input = True
+train_input = False
 
 fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png', 'data/sr/zebra_GT.png']
 fname = fnames[args.index]
@@ -88,8 +88,8 @@ if fname == 'data/denoising/snail.jpg':
     net = net.type(dtype)
 
 elif fname in fnames:
-    num_iter = 5000
-    input_depth = 32
+    num_iter = 8000
+    input_depth = 64
     figsize = 4
 
     net = get_net(input_depth, 'skip', pad,
@@ -126,26 +126,6 @@ psnr_gt_list = []
 indices = torch.arange(0, input_depth, dtype=torch.float)
 sample_freqs = True if INPUT == 'fourier' else False
 i = 0
-
-
-def log_images(array_of_imgs, iter):
-    B, C, H, W  = array_of_imgs.shape
-    images_np = np.zeros((H, B*W, C), dtype=np.float32)
-    for i in range(B):
-        images_np[:, i*W:W*(i+1), :] = np.transpose(array_of_imgs[i], (1, 2, 0))
-
-    wandb.log({'Denoising': wandb.Image(images_np, caption='Iteration #{}'.format(iter))})
-
-
-def log_inputs(inputs):
-    inputs_ = inputs.squeeze(0).detach().cpu().numpy()
-    C, H, W = inputs_.shape
-    inputs_arr = np.zeros((C, H, W), np.float32)
-    for channel_idx in range(C):
-        inputs_arr[channel_idx] = inputs_[channel_idx, :, :]
-
-    wandb.log({'Input': [wandb.Image(inputs_arr[ch_idx], caption='channel #{}'.format(ch_idx)) for ch_idx in range(C)]},
-              commit=False)
 
 
 def closure():
@@ -220,14 +200,14 @@ log_config = {
 }
 run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
-                     tags=['random_ff', 'train_input'],
-                     name='{}'.format(os.path.basename(fname).split('.')[0]),
+                     tags=['{}'.format(INPUT)],
+                     name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
                      job_type='train',
                      group='Denoising',
                      mode='online',
                      save_code=True,
                      config=log_config,
-                     notes='Random FF')
+                     notes='Input type {}, depth {}'.format(INPUT, input_depth))
 
 wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
