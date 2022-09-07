@@ -65,7 +65,7 @@ INPUT = ['noise', 'fourier', 'meshgrid'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net'  # 'net,input'
 
-reg_noise_std = 1. / 30. if INPUT=='noise' else 0.  # set to 1./20. for sigma=50
+reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
 LR = 0.01
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -89,7 +89,7 @@ if fname == 'data/denoising/snail.jpg':
 
 elif fname in fnames:
     num_iter = 8000
-    input_depth = 64
+    input_depth = 8
     figsize = 4
 
     net = get_net(input_depth, 'skip', pad,
@@ -214,7 +214,7 @@ p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_np = torch_to_np(net(net_input))
-log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter)
+log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')
 q = plot_image_grid([np.clip(out_np, 0, 1), img_np], factor=13)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))

@@ -16,7 +16,7 @@ from models.downsampler import Downsampler
 
 from utils.sr_utils import *
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
@@ -42,7 +42,7 @@ if PLOT:
                                         compare_psnr(imgs['HR_np'], imgs['bicubic_np']),
                                         compare_psnr(imgs['HR_np'], imgs['nearest_np'])))
 
-input_depth = 32
+input_depth = 64
 
 INPUT = ['meshgrid', 'noise', 'fourier'][-1]
 pad = 'reflection'
@@ -51,12 +51,13 @@ KERNEL_TYPE = 'lanczos2'
 sample_freqs = True
 LR = 0.01
 tv_weight = 0.0
+sample_freqs = True if INPUT == 'fourier' else False
 
 OPTIMIZER = 'adam'
 
 if factor == 4:
-    num_iter = 50000
-    reg_noise_std = 0  # 0.03
+    num_iter = 5000
+    reg_noise_std = 0.03 if INPUT == 'noise' else 0.
 elif factor == 8:
     num_iter = 4000
     reg_noise_std = 0.05
@@ -90,8 +91,7 @@ def closure():
     if reg_noise_std > 0:
         net_input = net_input_saved + (noise.normal_() * reg_noise_std)
     if sample_freqs:
-        # if i % 8000 == 0:  # sample freq
-        if 1:
+        if i % 8000 == 0:  # sample freq
             indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
                                         input_depth, replacement=False)
 
@@ -172,4 +172,5 @@ axes[0].plot([h[0] for h in psnr_history])
 axes[0].set_title('LR PSNR\nmax: {:.3f}'.format(max([h[0] for h in psnr_history])))
 axes[1].plot([h[1] for h in psnr_history])
 axes[1].set_title('HR PSNR\nmax: {:.3f}'.format(max([h[1] for h in psnr_history])))
-plt.savefig('curve_{}.png'.format(num_iter))
+# plt.savefig('curve_{}.png'.format(num_iter))
+plt.show()

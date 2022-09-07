@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from utils.inpainting_utils import *
-
+from utils.wandb_utils import *
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -72,8 +72,8 @@ OPT_OVER = 'net'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
-    INPUT = 'fourier' #'meshgrid'
-    input_depth = 32
+    INPUT = 'meshgrid' # 'fourier'
+    input_depth = 2
     LR = 0.01
     num_iter = 5001
     param_noise = False
@@ -109,10 +109,10 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
 
 elif 'library.png' in img_path:
 
-    INPUT = 'fourier' #'noise'
+    INPUT = 'noise' # 'fourier'
     input_depth = 32
 
-    num_iter = 5001
+    num_iter = 8001
     show_every = 50
     figsize = 8
     reg_noise_std = 0.00
@@ -207,6 +207,7 @@ def closure():
         psnr_gt_list.append(psnr_gt)
         psnr_mask_list.append(psnr_masked)
         print('Iteration %05d    Loss %f    psnr_gt %f   psnr_masked %f' % (i, total_loss.item(), psnr_gt, psnr_masked))
+        wandb.log({'psnr_gt': psnr_gt, 'psnr_noisy': psnr_masked}, commit=False)
         # plot_image_grid([np.clip(out_np, 0, 1)], factor=figsize, nrow=1)
 
     if i % show_every == 0:
@@ -239,7 +240,7 @@ log_config = {
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
-                 name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
+                 name='{}_depth_{}_{}'.format(os.path.basename(img_path).split('.')[0], input_depth, INPUT),
                  job_type='train',
                  group='Inpainting',
                  mode='online',
@@ -258,6 +259,7 @@ optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 net_input = net_input_saved[:, indices, :, :] if sample_freqs else net_input
 out_np = torch_to_np(net(net_input))
+log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Inpainting')
 plot_image_grid([out_np, img_np], factor=5)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))
