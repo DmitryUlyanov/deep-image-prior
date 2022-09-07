@@ -32,7 +32,7 @@ imsize = -1
 PLOT = True
 sigma = 25
 sigma_ = sigma/255.
-train_input = False
+train_input = True
 
 fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png', 'data/sr/zebra_GT.png']
 fname = fnames[args.index]
@@ -65,7 +65,8 @@ INPUT = ['noise', 'fourier', 'meshgrid'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net'  # 'net,input'
 
-reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
+# reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
+reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = 0.01
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -88,8 +89,8 @@ if fname == 'data/denoising/snail.jpg':
     net = net.type(dtype)
 
 elif fname in fnames:
-    num_iter = 8000
-    input_depth = 8
+    num_iter = 3000
+    input_depth = 32
     figsize = 4
 
     net = get_net(input_depth, 'skip', pad,
@@ -118,7 +119,10 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone()
+noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
+                                                                      'noise',
+                                                                      (img_pil.size[1], img_pil.size[0])
+                                                                      ).type(dtype).detach().clone()
 out_avg = None
 last_net = None
 psrn_noisy_last = 0
@@ -199,18 +203,20 @@ log_config = {
     'Train input': train_input
 }
 run = wandb.init(project="Fourier features DIP",
-                     entity="impliciteam",
-                     tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
-                     name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
-                     job_type='train',
-                     group='Denoising',
-                     mode='online',
-                     save_code=True,
-                     config=log_config,
-                     notes='Input type {}, depth {}'.format(INPUT, input_depth))
+                 entity="impliciteam",
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
+                 name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
+                 job_type='train',
+                 group='Denoising',
+                 mode='online',
+                 save_code=True,
+                 config=log_config,
+                 notes='Input type {}, depth {}'.format(INPUT, input_depth))
 
 wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
+if train_input:
+    p.append(net_input_saved)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_np = torch_to_np(net(net_input))
