@@ -32,7 +32,6 @@ imsize = -1
 PLOT = True
 sigma = 25
 sigma_ = sigma/255.
-train_input = False
 
 fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png', 'data/sr/zebra_GT.png']
 fname = fnames[args.index]
@@ -63,9 +62,9 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net'  # 'net,input'
-
-reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
+OPT_OVER = 'net,input'  # 'net,pe' # 'net'
+train_input = True if ',' in OPT_OVER else False
+reg_noise_std = 1. / 30.   # set to 1./20. for sigma=50
 LR = 0.01
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -103,7 +102,7 @@ else:
     assert False
 
 # Compute number of parameters
-s = sum([np.prod(list(p.size())) for p in net.parameters()]);
+s = sum([np.prod(list(p.size())) for p in net.parameters()])
 print('Number of params: %d' % s)
 
 # Loss
@@ -181,7 +180,7 @@ log_config = {
 }
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['infer_freqs', 'depth:{}'.format(input_depth)],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
                  name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
                  job_type='train',
                  group='Denoising',
@@ -192,7 +191,7 @@ run = wandb.init(project="Fourier features DIP",
                      INPUT, n_freqs, input_depth))
 
 wandb.run.log_code(".")
-p = get_params(OPT_OVER, net, freq_input_saved)
+p = get_params(OPT_OVER, net, freq_input_saved, pe=penet)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_np = torch_to_np(net(penet(freq_input_saved)))

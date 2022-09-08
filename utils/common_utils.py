@@ -27,7 +27,7 @@ def crop_image(img, d=32):
     img_cropped = img.crop(bbox)
     return img_cropped
 
-def get_params(opt_over, net, net_input, downsampler=None):
+def get_params(opt_over, net, net_input, downsampler=None, pe=None):
     '''Returns parameters that we want to optimize over.
 
     Args:
@@ -48,6 +48,8 @@ def get_params(opt_over, net, net_input, downsampler=None):
         elif opt == 'input':
             net_input.requires_grad = True
             params += [net_input]
+        elif opt == 'pe':
+            params += [x for x in pe.parameters()]
         else:
             assert False, 'what is it?'
             

@@ -1,12 +1,12 @@
 from __future__ import print_function
+from models import *
+from utils.wandb_utils import *
 import matplotlib.pyplot as plt
-
 import argparse
 import os
 import tqdm
 import numpy as np
-from models import *
-
+import wandb
 import torch
 import torch.optim
 
@@ -16,7 +16,14 @@ from models.downsampler import Downsampler
 
 from utils.sr_utils import *
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+parser = argparse.ArgumentParser()
+parser.add_argument('--config')
+parser.add_argument('--gpu', default='0')
+parser.add_argument('--index', default=0, type=int)
+parser.add_argument('--input_index', default=1, type=int)
+args = parser.parse_args()
+
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
@@ -29,7 +36,8 @@ show_every = 100
 
 # To produce images from the paper we took *_GT.png images from LapSRN viewer for corresponding factor,
 # e.g. x4/zebra_GT.png for factor=4, and x8/zebra_GT.png for factor=8
-path_to_image = 'data/sr/zebra_GT.png'
+fnames = ['data/sr/zebra_GT.png', 'data/denoising/F16_GT.png', 'data/inpainting/kate.png']
+path_to_image = fnames[args.index]
 
 # Starts here
 imgs = load_LR_HR_imgs_sr(path_to_image, imsize, factor, enforse_div32)
@@ -42,13 +50,12 @@ if PLOT:
                                         compare_psnr(imgs['HR_np'], imgs['bicubic_np']),
                                         compare_psnr(imgs['HR_np'], imgs['nearest_np'])))
 
-input_depth = 64
+input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier'][-1]
+INPUT = ['meshgrid', 'noise', 'fourier'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net'
 KERNEL_TYPE = 'lanczos2'
-sample_freqs = True
 LR = 0.01
 tv_weight = 0.0
 sample_freqs = True if INPUT == 'fourier' else False
@@ -57,7 +64,7 @@ OPTIMIZER = 'adam'
 
 if factor == 4:
     num_iter = 5000
-    reg_noise_std = 0.03 if INPUT == 'noise' else 0.
+    reg_noise_std = 0.03
 elif factor == 8:
     num_iter = 4000
     reg_noise_std = 0.05
@@ -65,7 +72,9 @@ else:
     assert False, 'We did not experiment with other factors'
 
 net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]))
-
+n_freqs = 8
+# penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
+# freq_input_saved = torch.rand(8).detach().type(dtype)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 net_input = net_input.type(dtype).detach()
 
@@ -128,18 +137,41 @@ def closure():
     # History
     psnr_history.append([psnr_LR, psnr_HR])
 
-    if PLOT and i % 100 == 0:
+    if PLOT and i % show_every == 0:
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
+        wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
         # print(indices)
         # out_HR_np = torch_to_np(out_HR)
         # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
 
     i += 1
-
+    wandb.log({'training loss': total_loss.item()}, commit=True)
     return total_loss
 
 
 # %%
+log_config = {
+    "learning_rate": LR,
+    "epochs": num_iter,
+    'optimizer': OPTIMIZER,
+    'loss': type(mse).__name__,
+    'input depth': input_depth,
+    'input type': INPUT,
+    'Train input': True if OPT_OVER != 'net' else False
+}
+run = wandb.init(project="Fourier features DIP",
+                 entity="impliciteam",
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
+                 name='{}_depth_{}_{}'.format(os.path.basename(path_to_image).split('.')[0], input_depth, INPUT),
+                 job_type='train',
+                 group='Super-Resolution',
+                 mode='online',
+                 save_code=True,
+                 config=log_config,
+                 notes='Input type {} - {} random projected to depth {}'.format(
+                     INPUT, n_freqs, input_depth))
+
+wandb.run.log_code(".")
 
 psnr_history = []
 net_input_saved = net_input.detach().clone()
@@ -167,6 +199,7 @@ plot_image_grid([imgs['HR_np'],
                  imgs['bicubic_np'],
                  out_HR_np], factor=4, nrow=1)
 
+log_images(np.array([np.clip(out_HR_np, 0, 1), imgs['HR_np']]), num_iter, task='Super-Resolution')
 fig, axes = plt.subplots(1, 2)
 axes[0].plot([h[0] for h in psnr_history])
 axes[0].set_title('LR PSNR\nmax: {:.3f}'.format(max([h[0] for h in psnr_history])))

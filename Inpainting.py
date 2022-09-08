@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from utils.inpainting_utils import *
 from utils.wandb_utils import *
+from models import PENet
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -93,7 +94,7 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     INPUT = 'noise'  # 'fourier'
     input_depth = 32
     LR = 0.01
-    num_iter = 10001
+    num_iter = 6001
     param_noise = False
     show_every = 50
     figsize = 5
@@ -109,8 +110,8 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
 
 elif 'library.png' in img_path:
 
-    INPUT = 'noise' # 'fourier'
-    input_depth = 32
+    INPUT = 'noise'  # 'fourier' 'infer_freqs'
+    input_depth = 1
 
     num_iter = 8001
     show_every = 50
@@ -155,7 +156,12 @@ else:
     assert False
 
 net = net.type(dtype)
-net_input = get_noise(input_depth, INPUT, img_np.shape[1:]).type(dtype)
+if INPUT == 'infer_freqs':
+    n_freqs = 8
+    penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
+    freq_input_saved = torch.rand(8).detach().type(dtype)
+else:
+    net_input = get_noise(input_depth, INPUT, img_np.shape[1:]).type(dtype)
 
 # Compute number of parameters
 s = sum(np.prod(list(p.size())) for p in net.parameters())
@@ -181,20 +187,22 @@ def closure():
     if param_noise:
         for n in [x for x in net.parameters() if len(x.size()) == 4]:
             n = n + n.detach().clone().normal_() * n.std() / 50
+    if INPUT != 'infer_freqs':
+        net_input = net_input_saved
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
 
-    net_input = net_input_saved
-    if reg_noise_std > 0:
-        net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        if sample_freqs:
+            if i % num_iter == 0:  # sample freq
+                indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
+                                            input_depth, replacement=False)
 
-    if sample_freqs:
-        if i % num_iter == 0:  # sample freq
-            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                        input_depth, replacement=False)
+                assert len(torch.unique(indices)) == input_depth
+                print(indices)
 
-            assert len(torch.unique(indices)) == input_depth
-            print(indices)
-
-        net_input = net_input_saved[:, indices, :, :]
+            net_input = net_input_saved[:, indices, :, :]
+    else:
+        net_input = penet(freq_input_saved)
 
     out = net(net_input)
 
@@ -239,7 +247,7 @@ log_config = {
 
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
                  name='{}_depth_{}_{}'.format(os.path.basename(img_path).split('.')[0], input_depth, INPUT),
                  job_type='train',
                  group='Inpainting',
@@ -251,13 +259,23 @@ run = wandb.init(project="Fourier features DIP",
 wandb.run.log_code(".")
 
 
-net_input_saved = net_input.detach().clone()
-noise = net_input.detach().clone()
+if INPUT != 'infer_freqs':
+    net_input_saved = net_input.detach().clone()
+    noise = net_input.detach().clone()
+    p_input = net_input
+else:
+    p_input = freq_input_saved
 
-p = get_params(OPT_OVER, net, net_input)
+p = get_params(OPT_OVER, net, p_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
-net_input = net_input_saved[:, indices, :, :] if sample_freqs else net_input
+if INPUT == 'fourier':
+    net_input = net_input_saved[:, indices, :, :]
+elif INPUT == 'infer_freqs':
+    net_input = penet(freq_input_saved)
+else:
+    pass
+
 out_np = torch_to_np(net(net_input))
 log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Inpainting')
 plot_image_grid([out_np, img_np], factor=5)
