@@ -14,7 +14,7 @@ import numpy as np
 # from skimage.measure import compare_psnr
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 
-
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
@@ -32,7 +32,6 @@ imsize = -1
 PLOT = True
 sigma = 25
 sigma_ = sigma/255.
-train_input = True
 
 fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png', 'data/sr/zebra_GT.png']
 fname = fnames[args.index]
@@ -63,8 +62,8 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net'  # 'net,input'
-
+OPT_OVER = 'net,input'  # 'net'
+train_input = True if ',' in OPT_OVER else False
 # reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
 reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = 0.01
@@ -106,7 +105,7 @@ else:
 net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0])).type(dtype)
 
 # Compute number of parameters
-s = sum([np.prod(list(p.size())) for p in net.parameters()]);
+s = sum([np.prod(list(p.size())) for p in net.parameters()])
 print('Number of params: %d' % s)
 
 # Loss
@@ -114,8 +113,7 @@ mse = torch.nn.MSELoss().type(dtype)
 
 img_noisy_torch = np_to_torch(img_noisy_np).type(dtype)
 if train_input:
-    net_input_saved = net_input.requires_grad_(True)
-
+    net_input_saved = net_input
 else:
     net_input_saved = net_input.detach().clone()
 
@@ -204,7 +202,7 @@ log_config = {
 }
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
                  name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
                  job_type='train',
                  group='Denoising',
@@ -215,8 +213,6 @@ run = wandb.init(project="Fourier features DIP",
 
 wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
-if train_input:
-    p.append(net_input_saved)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_np = torch_to_np(net(net_input))

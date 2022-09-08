@@ -14,6 +14,7 @@ import wandb
 import argparse
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
@@ -68,8 +69,9 @@ img_mask_var = np_to_torch(img_mask_np).type(dtype)
 plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 pad = 'reflection'  # 'zero'
-OPT_OVER = 'net'
+OPT_OVER = 'net,input'  # 'net'
 OPTIMIZER = 'adam'
+train_input = True if ',' in OPT_OVER else False
 
 if 'vase.png' in img_path:
     INPUT = 'meshgrid' # 'fourier'
@@ -182,11 +184,12 @@ def closure():
         for n in [x for x in net.parameters() if len(x.size()) == 4]:
             n = n + n.detach().clone().normal_() * n.std() / 50
 
-    net_input = net_input_saved
-    if reg_noise_std > 0:
-        net_input = net_input_saved + (noise.normal_() * reg_noise_std)
-
-    if sample_freqs:
+    if INPUT == 'noise':
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input = net_input_saved
+    elif INPUT == 'fourier':
         if i % num_iter == 0:  # sample freq
             indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
                                         input_depth, replacement=False)
@@ -195,6 +198,8 @@ def closure():
             print(indices)
 
         net_input = net_input_saved[:, indices, :, :]
+    else:
+        net_input = net_input_saved
 
     out = net(net_input)
 
@@ -206,6 +211,9 @@ def closure():
         psnr_masked = compare_psnr(img_np * img_mask_np, out.detach().cpu().numpy()[0])
         psnr_gt_list.append(psnr_gt)
         psnr_mask_list.append(psnr_masked)
+        if train_input:
+            log_inputs(net_input)
+
         print('Iteration %05d    Loss %f    psnr_gt %f   psnr_masked %f' % (i, total_loss.item(), psnr_gt, psnr_masked))
         wandb.log({'psnr_gt': psnr_gt, 'psnr_noisy': psnr_masked}, commit=False)
         # plot_image_grid([np.clip(out_np, 0, 1)], factor=figsize, nrow=1)
@@ -235,11 +243,12 @@ log_config = {
     'loss': type(mse).__name__,
     'input depth': input_depth,
     'input type': INPUT,
+    'train_input': train_input
 }
 
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
                  name='{}_depth_{}_{}'.format(os.path.basename(img_path).split('.')[0], input_depth, INPUT),
                  job_type='train',
                  group='Inpainting',
@@ -250,8 +259,11 @@ run = wandb.init(project="Fourier features DIP",
 
 wandb.run.log_code(".")
 
+if train_input:
+    net_input_saved = net_input
+else:
+    net_input_saved = net_input.detach().clone()
 
-net_input_saved = net_input.detach().clone()
 noise = net_input.detach().clone()
 
 p = get_params(OPT_OVER, net, net_input)
