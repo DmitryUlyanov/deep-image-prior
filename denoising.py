@@ -62,7 +62,7 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net,input'  # 'net,pe' # 'net'
+OPT_OVER = 'net,pe' # 'net'
 train_input = True if ',' in OPT_OVER else False
 reg_noise_std = 1. / 30.   # set to 1./20. for sigma=50
 LR = 0.01
@@ -190,6 +190,7 @@ run = wandb.init(project="Fourier features DIP",
                  notes='Input type {} - {} random projected to depth {}'.format(
                      INPUT, n_freqs, input_depth))
 
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/*.*'
 wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, freq_input_saved, pe=penet)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
