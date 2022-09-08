@@ -56,6 +56,7 @@ INPUT = ['meshgrid', 'noise', 'fourier'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net'
 KERNEL_TYPE = 'lanczos2'
+train_input = True if OPT_OVER != 'net' else False
 LR = 0.01
 tv_weight = 0.0
 sample_freqs = True if INPUT == 'fourier' else False
@@ -76,7 +77,6 @@ n_freqs = 8
 # penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
 # freq_input_saved = torch.rand(8).detach().type(dtype)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
-net_input = net_input.type(dtype).detach()
 
 NET_TYPE = 'skip' # UNet, ResNet
 net = get_net(input_depth, 'skip', pad,
@@ -157,7 +157,7 @@ log_config = {
     'loss': type(mse).__name__,
     'input depth': input_depth,
     'input type': INPUT,
-    'Train input': True if OPT_OVER != 'net' else False
+    'Train input': train_input
 }
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
@@ -174,22 +174,22 @@ run = wandb.init(project="Fourier features DIP",
 wandb.run.log_code(".")
 
 psnr_history = []
-net_input_saved = net_input.detach().clone()
-noise = net_input.detach().clone()
+if train_input:
+    net_input_saved = net_input
+else:
+    net_input_saved = net_input.detach().clone()
+
+noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
+                                                                      'noise',
+                                                                      (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])
+                                                                      ).type(dtype).detach().clone()
 indices = torch.arange(0, input_depth, dtype=torch.float)
 last_net = None
 psnr_LR_last = 0
 
 i = 0
 p = get_params(OPT_OVER, net, net_input)
-
-optimizer = torch.optim.Adam(p, lr=LR)
-for j in tqdm.tqdm(range(num_iter)):
-    optimizer.zero_grad()
-    closure()
-    optimizer.step()
-
-# optimize(OPTIMIZER, p, closure, LR, num_iter)
+optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_HR_np = np.clip(torch_to_np(net(net_input)), 0, 1)
 result_deep_prior = put_in_center(out_HR_np, imgs['orig_np'].shape[1:])

@@ -14,7 +14,7 @@ import numpy as np
 # from skimage.measure import compare_psnr
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 
-
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
@@ -62,9 +62,9 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net,pe' # 'net'
+OPT_OVER = 'net,pe'  # 'net'
 train_input = True if ',' in OPT_OVER else False
-reg_noise_std = 1. / 30.   # set to 1./20. for sigma=50
+reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = 0.01
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -101,6 +101,8 @@ elif fname in fnames:
 else:
     assert False
 
+net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0])).type(dtype)
+
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])
 print('Number of params: %d' % s)
@@ -109,11 +111,21 @@ print('Number of params: %d' % s)
 mse = torch.nn.MSELoss().type(dtype)
 
 img_noisy_torch = np_to_torch(img_noisy_np).type(dtype)
+if train_input:
+    net_input_saved = net_input
+else:
+    net_input_saved = net_input.detach().clone()
 
+noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
+                                                                      'noise',
+                                                                      (img_pil.size[1], img_pil.size[0])
+                                                                      ).type(dtype).detach().clone()
 out_avg = None
 last_net = None
 psrn_noisy_last = 0
 psnr_gt_list = []
+indices = torch.arange(0, input_depth, dtype=torch.float)
+sample_freqs = True if INPUT == 'fourier' else False
 i = 0
 n_freqs = 8
 penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
@@ -121,9 +133,27 @@ freq_input_saved = torch.rand(8).detach().type(dtype)
 
 
 def closure():
-    global i, out_avg, psrn_noisy_last, last_net, psnr_gt_list, freq_input_saved
+    global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list, indices, freq_input_saved
 
-    net_input = penet(freq_input_saved)
+    if INPUT == 'noise':
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input = net_input_saved
+    elif INPUT == 'fourier':
+        if i % 8000 == 0:  # sample freq
+            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
+                                        input_depth, replacement=False)
+
+            assert len(torch.unique(indices)) == input_depth
+            print(indices)
+
+        net_input = net_input_saved[:, indices, :, :]
+    elif INPUT == 'infer_freqs':
+        net_input = penet(freq_input_saved)
+    else:
+        net_input = net_input_saved
+
     out = net(net_input)
 
     # Smoothing
@@ -190,9 +220,8 @@ run = wandb.init(project="Fourier features DIP",
                  notes='Input type {} - {} random projected to depth {}'.format(
                      INPUT, n_freqs, input_depth))
 
-os.environ['WANDB_IGNORE_GLOBS'] = './venv/*.*'
 wandb.run.log_code(".")
-p = get_params(OPT_OVER, net, freq_input_saved, pe=penet)
+p = get_params(OPT_OVER, net, net_input, pe=penet)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_np = torch_to_np(net(penet(freq_input_saved)))
