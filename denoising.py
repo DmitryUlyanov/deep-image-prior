@@ -150,7 +150,9 @@ def closure():
 
         net_input = net_input_saved[:, indices, :, :]
     elif INPUT == 'infer_freqs':
-        net_input = penet(freq_input_saved)
+        if reg_noise_std > 0:
+            freq_input = freq_input_saved + (noise.normal_() * reg_noise_std)
+        net_input = penet(freq_input)
     else:
         net_input = net_input_saved
 
@@ -208,10 +210,11 @@ log_config = {
     'input type': INPUT,
     'Train input': train_input
 }
+filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
-                 name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
+                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Denoising',
                  mode='online',

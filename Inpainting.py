@@ -253,11 +253,11 @@ log_config = {
     'input type': INPUT,
     'train_input': train_input
 }
-
+filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth)],
-                 name='{}_depth_{}_{}'.format(os.path.basename(img_path).split('.')[0], input_depth, INPUT),
+                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Inpainting',
                  mode='online',

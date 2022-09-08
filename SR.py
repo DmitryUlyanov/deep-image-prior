@@ -23,6 +23,7 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
 args = parser.parse_args()
 
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
@@ -52,9 +53,9 @@ if PLOT:
 
 input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier'][args.input_index]
+INPUT = ['meshgrid', 'noise', 'fourier', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net'
+OPT_OVER = 'net,pe'
 KERNEL_TYPE = 'lanczos2'
 train_input = True if OPT_OVER != 'net' else False
 LR = 0.01
@@ -64,7 +65,7 @@ sample_freqs = True if INPUT == 'fourier' else False
 OPTIMIZER = 'adam'
 
 if factor == 4:
-    num_iter = 5000
+    num_iter = 12000
     reg_noise_std = 0.03
 elif factor == 8:
     num_iter = 4000
@@ -74,11 +75,11 @@ else:
 
 net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]))
 n_freqs = 8
-# penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
-# freq_input_saved = torch.rand(8).detach().type(dtype)
+penet = PENet(num_frequencies=8, img_size=(imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
+freq_input_saved = torch.rand(8).detach().type(dtype)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
-NET_TYPE = 'skip' # UNet, ResNet
+NET_TYPE = 'skip'  # UNet, ResNet
 net = get_net(input_depth, 'skip', pad,
               skip_n33d=128,
               skip_n33u=128,
@@ -97,9 +98,12 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 def closure():
     global i, net_input, last_net, psnr_LR_last, indices
 
-    if reg_noise_std > 0:
-        net_input = net_input_saved + (noise.normal_() * reg_noise_std)
-    if sample_freqs:
+    if INPUT == 'noise':
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input = net_input_saved
+    if INPUT == 'fourier':
         if i % 8000 == 0:  # sample freq
             indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
                                         input_depth, replacement=False)
@@ -108,6 +112,12 @@ def closure():
             # print(indices)
 
         net_input = net_input_saved[:, indices, :, :]
+    elif INPUT == 'infer_freqs':
+        # if reg_noise_std > 0:
+        #     freq_input = freq_input_saved + (noise.normal_() * reg_noise_std)
+        net_input = penet(freq_input_saved)
+    else:
+        net_input = net_input_saved
 
     out_HR = net(net_input)
     out_LR = downsampler(out_HR)
@@ -159,10 +169,11 @@ log_config = {
     'input type': INPUT,
     'Train input': train_input
 }
+filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
-                 name='{}_depth_{}_{}'.format(os.path.basename(path_to_image).split('.')[0], input_depth, INPUT),
+                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Super-Resolution',
                  mode='online',
@@ -188,7 +199,7 @@ last_net = None
 psnr_LR_last = 0
 
 i = 0
-p = get_params(OPT_OVER, net, net_input)
+p = get_params(OPT_OVER, net, net_input, pe=penet if INPUT == 'infer_freqs' else None)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_HR_np = np.clip(torch_to_np(net(net_input)), 0, 1)

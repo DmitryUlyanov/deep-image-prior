@@ -156,6 +156,8 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
         meshgrid_np = np.concatenate([X[None, :], Y[None, :]])
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
+    elif method == 'infer_freqs':
+        net_input = None
     else:
         assert False
         
