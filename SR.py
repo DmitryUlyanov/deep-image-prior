@@ -51,18 +51,21 @@ if PLOT:
                                         compare_psnr(imgs['HR_np'], imgs['bicubic_np']),
                                         compare_psnr(imgs['HR_np'], imgs['nearest_np'])))
 
-input_depth = 128
+input_depth = 32
 
 INPUT = ['meshgrid', 'noise', 'fourier', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net,pe'
+OPT_OVER = 'net,input'
 KERNEL_TYPE = 'lanczos2'
 train_input = True if OPT_OVER != 'net' else False
 LR = 0.01
 tv_weight = 0.0
-sample_freqs = True if INPUT == 'fourier' else False
-
 OPTIMIZER = 'adam'
+freq_dict = {
+        'method': 'log',
+        'max': 64,
+        'n_freqs': 8
+    }
 
 if factor == 4:
     num_iter = 10000
@@ -73,13 +76,8 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
-n_freqs = 32
-penet = PENet(num_frequencies=n_freqs, img_size=(imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
-freq_input_saved = torch.rand(n_freqs).detach().type(dtype)
-if INPUT == 'infer_freqs':
-    assert input_depth == 4 * n_freqs
-
+net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
+                      freq_dict=freq_dict).type(dtype)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
 NET_TYPE = 'skip'  # UNet, ResNet
@@ -106,19 +104,14 @@ def closure():
             net_input = net_input_saved + (noise.normal_() * reg_noise_std)
         else:
             net_input = net_input_saved
-    if INPUT == 'fourier':
-        if i % 8000 == 0:  # sample freq
-            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                        input_depth, replacement=False)
-
-            assert len(torch.unique(indices)) == input_depth
-            # print(indices)
-
+    elif INPUT == 'fourier':
         net_input = net_input_saved[:, indices, :, :]
     elif INPUT == 'infer_freqs':
-        # if reg_noise_std > 0:
-        #     freq_input = freq_input_saved + (noise.normal_() * reg_noise_std)
-        net_input = penet(freq_input_saved)
+        if reg_noise_std > 0:
+            net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input_ = net_input_saved
+        net_input = generate_fourier_feature_maps(net_input_, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype)
     else:
         net_input = net_input_saved
 
@@ -136,17 +129,6 @@ def closure():
     psnr_LR = compare_psnr(imgs['LR_np'], torch_to_np(out_LR))
     psnr_HR = compare_psnr(imgs['HR_np'], torch_to_np(out_HR))
 
-    # if psnr_LR - psnr_LR_last < -5:
-    #     print('Falling back to previous checkpoint.')
-    #
-    #     for new_param, net_param in zip(last_net, net.parameters()):
-    #         net_param.data.copy_(new_param.cuda())
-    #
-    #     return total_loss * 0
-    # else:
-    #     last_net = [x.detach().cpu() for x in net.parameters()]
-    #     psnr_LR_last = psnr_LR
-
     # History
     psnr_history.append([psnr_LR, psnr_HR])
 
@@ -155,7 +137,6 @@ def closure():
             log_inputs(net_input)
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
         wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
-        # print(indices)
         # out_HR_np = torch_to_np(out_HR)
         # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
 
@@ -174,6 +155,7 @@ log_config = {
     'input type': INPUT,
     'Train input': train_input
 }
+log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
@@ -185,9 +167,9 @@ run = wandb.init(project="Fourier features DIP",
                  save_code=True,
                  config=log_config,
                  notes='Input type {} - {} random projected to depth {}'.format(
-                     INPUT, n_freqs, input_depth))
+                     INPUT, freq_dict['n_freqs'], input_depth))
 
-wandb.run.log_code(".")
+# wandb.run.log_code(".")
 
 psnr_history = []
 if train_input:
@@ -195,16 +177,15 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
-                                                                      'noise',
-                                                                      (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])
-                                                                      ).type(dtype).detach().clone()
-indices = torch.arange(0, input_depth, dtype=torch.float)
+noise = net_input.detach().clone()
+if INPUT == 'fourier':
+    indices = sample_indices(input_depth, net_input_saved)
+
 last_net = None
 psnr_LR_last = 0
 
 i = 0
-p = get_params(OPT_OVER, net, net_input, pe=penet if INPUT == 'infer_freqs' else None)
+p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 out_HR_np = np.clip(torch_to_np(net(net_input)), 0, 1)

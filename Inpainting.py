@@ -69,8 +69,13 @@ img_mask_var = np_to_torch(img_mask_np).type(dtype)
 
 plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
+freq_dict = {
+        'method': 'log',
+        'max': 64,
+        'n_freqs': 8
+    }
 pad = 'reflection'  # 'zero'
-OPT_OVER = 'net,pe'
+OPT_OVER = 'net,input'
 OPTIMIZER = 'adam'
 train_input = True if ',' in OPT_OVER else False
 
@@ -93,7 +98,7 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'infer_freqs'  #'noise'  # 'fourier'
+    INPUT = 'infer_freqs'  #'fourier'  # 'noise'
     input_depth = 32
     LR = 0.01
     num_iter = 6001
@@ -112,8 +117,8 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
 
 elif 'library.png' in img_path:
 
-    INPUT = 'noise'  # 'fourier' 'infer_freqs'
-    input_depth = 1
+    INPUT = 'infer_freqs'  # 'noise'  # 'fourier'
+    input_depth = 32
 
     num_iter = 8001
     show_every = 50
@@ -158,14 +163,8 @@ else:
     assert False
 
 net = net.type(dtype)
-
-n_freqs = 8
-penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
-freq_input_saved = torch.rand(8).detach().type(dtype)
-if INPUT == 'infer_freqs':
-    net_input = freq_input_saved
-else:
-    net_input = get_noise(input_depth, INPUT, img_np.shape[1:]).type(dtype)
+net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
+noise = net_input.detach().clone()
 
 # Compute number of parameters
 s = sum(np.prod(list(p.size())) for p in net.parameters())
@@ -180,13 +179,11 @@ psnr_gt_list = []
 psnr_mask_list = []
 psnr_masked_last = 0.0
 last_net = None
-indices = torch.arange(0, input_depth, dtype=torch.float)
-sample_freqs = True if INPUT == 'fourier' else False
 i = 0
 
 
 def closure():
-    global i, indices, last_net, psnr_masked_last
+    global i, last_net, psnr_masked_last
 
     if param_noise:
         for n in [x for x in net.parameters() if len(x.size()) == 4]:
@@ -198,16 +195,13 @@ def closure():
         else:
             net_input = net_input_saved
     elif INPUT == 'fourier':
-        if i % num_iter == 0:  # sample freq
-            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                        input_depth, replacement=False)
-
-            assert len(torch.unique(indices)) == input_depth
-            print(indices)
-
         net_input = net_input_saved[:, indices, :, :]
     elif INPUT == 'infer_freqs':
-        net_input = penet(freq_input_saved)
+        if reg_noise_std > 0:
+            net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input_ = net_input_saved
+        net_input = generate_fourier_feature_maps(net_input_, (img_pil.size[1], img_pil.size[0]), dtype)
     else:
         net_input = net_input_saved
 
@@ -269,20 +263,23 @@ run = wandb.init(project="Fourier features DIP",
 
 # wandb.run.log_code(".")
 
-if INPUT != 'infer_freqs':
-    if train_input:
-        net_input_saved = net_input
-    else:
-        net_input_saved = net_input.detach().clone()
-    noise = net_input.detach().clone()
 
-p = get_params(OPT_OVER, net, net_input, pe=penet if INPUT == 'infer_freqs' else None)
+if train_input:
+    net_input_saved = net_input
+else:
+    net_input_saved = net_input.detach().clone()
+
+noise = net_input.detach().clone()
+if INPUT == 'fourier':
+    indices = sample_indices(input_depth, net_input_saved)
+
+p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 if INPUT == 'fourier':
     net_input = net_input_saved[:, indices, :, :]
 elif INPUT == 'infer_freqs':
-    net_input = penet(freq_input_saved)
+    net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype)
 else:
     net_input = net_input_saved
 

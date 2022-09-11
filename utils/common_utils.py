@@ -27,7 +27,7 @@ def crop_image(img, d=32):
     img_cropped = img.crop(bbox)
     return img_cropped
 
-def get_params(opt_over, net, net_input, downsampler=None, pe=None):
+def get_params(opt_over, net, net_input, downsampler=None):
     '''Returns parameters that we want to optimize over.
 
     Args:
@@ -48,8 +48,6 @@ def get_params(opt_over, net, net_input, downsampler=None, pe=None):
         elif opt == 'input':
             net_input.requires_grad = True
             params += [net_input]
-        elif opt == 'pe':
-            params += [x for x in pe.parameters()]
         else:
             assert False, 'what is it?'
             
@@ -135,7 +133,7 @@ def get_meshgrid(spatial_size):
     return meshgrid
 
 
-def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, n_freqs=8):
+def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, freq_dict=None):
     """Returns a pytorch.Tensor of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
     initialized in a specific way.
     Args:
@@ -160,14 +158,13 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, n_fr
     elif method == 'fourier':
         meshgrid_np = get_meshgrid(spatial_size)
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
-        net_input = rff.functional.positional_encoding(meshgrid, m=80, sigma=30).permute(0, 3, 1, 2)
+        net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
     elif method == 'infer_freqs':
-        meshgrid_np = get_meshgrid(spatial_size)
-        coeffs = torch.rand(n_freqs)
-        meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
-        vp = coeffs * torch.unsqueeze(meshgrid, -1)
-        vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
-        return vp_cat.flatten(-2, -1).permute(0, 3, 1, 2)
+        if freq_dict['method'] == 'linear':
+            net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
+        elif freq_dict['method'] == 'log':
+            net_input = 2. ** torch.linspace(0., freq_dict['n_freqs']-1, steps=freq_dict['n_freqs'])
+
     else:
         assert False
         
@@ -303,3 +300,20 @@ def get_embedder(multires=10, i=0):
     embedder_obj = Embedder(**embed_kwargs)
     embed = lambda x, eo=embedder_obj: eo.embed(x)
     return embed, embedder_obj.out_dim
+
+
+def sample_indices(input_depth, net_input_saved):
+    indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
+                                input_depth, replacement=False)
+
+    assert len(torch.unique(indices)) == input_depth
+    return indices
+
+
+def generate_fourier_feature_maps(net_input, spatial_size, dtype):
+    meshgrid_np = get_meshgrid(spatial_size)
+    meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0).type(dtype)
+    vp = net_input * torch.unsqueeze(meshgrid, -1)
+    vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
+    return vp_cat.flatten(-2, -1).permute(0, 3, 1, 2)
+
