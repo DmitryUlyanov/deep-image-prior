@@ -70,15 +70,15 @@ img_mask_var = np_to_torch(img_mask_np).type(dtype)
 plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 pad = 'reflection'  # 'zero'
-OPT_OVER = 'net'
+OPT_OVER = 'net,pe'
 OPTIMIZER = 'adam'
 train_input = True if ',' in OPT_OVER else False
 
 if 'vase.png' in img_path:
-    INPUT = 'meshgrid' # 'fourier'
-    input_depth = 2
+    INPUT = 'infer_freqs' #'meshgrid' # 'fourier'
+    input_depth = 32
     LR = 0.01
-    num_iter = 5001
+    num_iter = 8001
     param_noise = False
     show_every = 50
     figsize = 5
@@ -93,7 +93,7 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'noise'  # 'fourier'
+    INPUT = 'infer_freqs'  #'noise'  # 'fourier'
     input_depth = 32
     LR = 0.01
     num_iter = 6001
@@ -158,10 +158,12 @@ else:
     assert False
 
 net = net.type(dtype)
+
+n_freqs = 8
+penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
+freq_input_saved = torch.rand(8).detach().type(dtype)
 if INPUT == 'infer_freqs':
-    n_freqs = 8
-    penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
-    freq_input_saved = torch.rand(8).detach().type(dtype)
+    net_input = freq_input_saved
 else:
     net_input = get_noise(input_depth, INPUT, img_np.shape[1:]).type(dtype)
 
@@ -265,20 +267,16 @@ run = wandb.init(project="Fourier features DIP",
                  config=log_config,
                  notes='Input type {}, depth {}'.format(INPUT, input_depth))
 
-wandb.run.log_code(".")
-
-if train_input:
-    net_input_saved = net_input
-else:
-    net_input_saved = net_input.detach().clone()
-
-noise = net_input.detach().clone()
+# wandb.run.log_code(".")
 
 if INPUT != 'infer_freqs':
-    net_input_saved = net_input.detach().clone()
+    if train_input:
+        net_input_saved = net_input
+    else:
+        net_input_saved = net_input.detach().clone()
     noise = net_input.detach().clone()
 
-p = get_params(OPT_OVER, net, net_input)
+p = get_params(OPT_OVER, net, net_input, pe=penet if INPUT == 'infer_freqs' else None)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 if INPUT == 'fourier':

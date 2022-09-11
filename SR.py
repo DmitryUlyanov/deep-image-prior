@@ -51,7 +51,7 @@ if PLOT:
                                         compare_psnr(imgs['HR_np'], imgs['bicubic_np']),
                                         compare_psnr(imgs['HR_np'], imgs['nearest_np'])))
 
-input_depth = 32
+input_depth = 128
 
 INPUT = ['meshgrid', 'noise', 'fourier', 'infer_freqs'][args.input_index]
 pad = 'reflection'
@@ -65,7 +65,7 @@ sample_freqs = True if INPUT == 'fourier' else False
 OPTIMIZER = 'adam'
 
 if factor == 4:
-    num_iter = 12000
+    num_iter = 10000
     reg_noise_std = 0.03
 elif factor == 8:
     num_iter = 4000
@@ -73,10 +73,13 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]))
-n_freqs = 8
-penet = PENet(num_frequencies=8, img_size=(imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
-freq_input_saved = torch.rand(8).detach().type(dtype)
+net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
+n_freqs = 32
+penet = PENet(num_frequencies=n_freqs, img_size=(imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
+freq_input_saved = torch.rand(n_freqs).detach().type(dtype)
+if INPUT == 'infer_freqs':
+    assert input_depth == 4 * n_freqs
+
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
 NET_TYPE = 'skip'  # UNet, ResNet
@@ -148,6 +151,8 @@ def closure():
     psnr_history.append([psnr_LR, psnr_HR])
 
     if PLOT and i % show_every == 0:
+        if train_input:
+            log_inputs(net_input)
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
         wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
         # print(indices)
