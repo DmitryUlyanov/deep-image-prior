@@ -18,8 +18,7 @@ from utils.sr_utils import *
 
 # Fix seeds
 seed = 0
-torch.random.seed(seed)
-np.random.seed(seed)
+seed = np.random.seed(seed)
 torch.random.manual_seed(seed)
 
 parser = argparse.ArgumentParser()
@@ -169,7 +168,7 @@ run = wandb.init(project="Fourier features DIP",
                  name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Super-Resolution',
-                 mode='online',
+                 mode='offline',
                  save_code=True,
                  config=log_config,
                  notes='Input type {} - {} random projected to depth {}'.format(
@@ -183,7 +182,7 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone()
+noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
 if INPUT == 'fourier':
     indices = sample_indices(input_depth, net_input_saved)
 

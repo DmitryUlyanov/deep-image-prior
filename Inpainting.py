@@ -22,7 +22,6 @@ dtype = torch.cuda.FloatTensor
 
 # Fix seeds
 seed = 0
-torch.random.seed(seed)
 np.random.seed(seed)
 torch.random.manual_seed(seed)
 
@@ -276,7 +275,7 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone()
+noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
 if INPUT == 'fourier':
     indices = sample_indices(input_depth, net_input_saved)
 
