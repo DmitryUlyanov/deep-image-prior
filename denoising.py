@@ -68,7 +68,7 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net,input'  # 'net'
+OPT_OVER = 'net'  # 'net'
 train_input = True if ',' in OPT_OVER else False
 reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = 0.01
@@ -127,8 +127,9 @@ else:
     net_input_saved = net_input.detach().clone()
 
 noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
-if INPUT == 'fourier':
-    indices = sample_indices(input_depth, net_input_saved)
+# if INPUT == 'fourier':
+#     indices = sample_indices(input_depth, net_input_saved)
+
 out_avg = None
 last_net = None
 psrn_noisy_last = 0
@@ -145,7 +146,8 @@ def closure():
         else:
             net_input = net_input_saved
     elif INPUT == 'fourier':
-        net_input = net_input_saved[:, indices, :, :]
+        # net_input = net_input_saved[:, indices, :, :]
+        net_input = net_input_saved
     elif INPUT == 'infer_freqs':
         if reg_noise_std > 0:
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
@@ -213,8 +215,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
+                 tags=['random_{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, 'random_{}'.format(INPUT)),
                  job_type='train',
                  group='Denoising',
                  mode='online',
@@ -228,7 +230,8 @@ p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
 if INPUT in ['fourier']:
-    net_input = net_input_saved[:, indices, :, :]
+    # net_input = net_input_saved[:, indices, :, :]
+    net_input = net_input_saved
 elif INPUT == 'infer_freqs':
     net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype)
 else:

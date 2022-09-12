@@ -158,7 +158,8 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, freq
     elif method == 'fourier':
         meshgrid_np = get_meshgrid(spatial_size)
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
-        net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
+        # net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
+        net_input = positional_encoding(v=meshgrid, m=40, sigma=10, sample_depth=input_depth // 4).permute(0, 3, 1, 2)
     elif method == 'infer_freqs':
         if freq_dict['method'] == 'linear':
             net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
@@ -317,3 +318,16 @@ def generate_fourier_feature_maps(net_input, spatial_size, dtype):
     vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
     return vp_cat.flatten(-2, -1).permute(0, 3, 1, 2)
 
+
+def positional_encoding(m, sigma, v, sample_depth=0):
+    j = torch.arange(m, device=v.device)
+    if sample_depth > 0:
+        indices = torch.multinomial(torch.arange(0, j.shape[0], dtype=torch.float),
+                                    sample_depth, replacement=False)
+        coeffs = 2 * np.pi * sigma ** (j[indices] / m)
+    else:
+        coeffs = 2 * np.pi * sigma ** (j / m)
+
+    vp = coeffs * torch.unsqueeze(v, -1)
+    vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
+    return vp_cat.flatten(-2, -1)

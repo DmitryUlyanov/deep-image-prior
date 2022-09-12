@@ -80,12 +80,12 @@ freq_dict = {
         'n_freqs': 8
     }
 pad = 'reflection'  # 'zero'
-OPT_OVER = 'net,input'
+OPT_OVER = 'net'
 OPTIMIZER = 'adam'
 train_input = True if ',' in OPT_OVER else False
 
 if 'vase.png' in img_path:
-    INPUT = 'infer_freqs' #'meshgrid' # 'fourier'
+    INPUT = 'fourier'  # 'meshgrid' # 'infer_freqs'
     input_depth = 32
     LR = 0.01
     num_iter = 8001
@@ -103,7 +103,7 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'infer_freqs'  #'fourier'  # 'noise'
+    INPUT = 'infer_freqs'  #'infer_freqs'  # 'noise'
     input_depth = 32
     LR = 0.01
     num_iter = 6001
@@ -122,7 +122,7 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
 
 elif 'library.png' in img_path:
 
-    INPUT = 'infer_freqs'  # 'noise'  # 'fourier'
+    INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
     input_depth = 32
 
     num_iter = 8001
@@ -200,7 +200,8 @@ def closure():
         else:
             net_input = net_input_saved
     elif INPUT == 'fourier':
-        net_input = net_input_saved[:, indices, :, :]
+        # net_input = net_input_saved[:, indices, :, :]
+        net_input = net_input_saved
     elif INPUT == 'infer_freqs':
         if reg_noise_std > 0:
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
@@ -258,8 +259,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
+                 tags=['random_{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, 'random_{}'.format(INPUT)),
                  job_type='train',
                  group='Inpainting',
                  mode='online',
@@ -276,15 +277,15 @@ else:
     net_input_saved = net_input.detach().clone()
 
 noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
-if INPUT == 'fourier':
-    indices = sample_indices(input_depth, net_input_saved)
+# if INPUT == 'fourier':
+#     indices = sample_indices(input_depth, net_input_saved)
 
 p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 
-if INPUT == 'fourier':
-    net_input = net_input_saved[:, indices, :, :]
-elif INPUT == 'infer_freqs':
+# if INPUT == 'fourier':
+#     net_input = net_input_saved[:, indices, :, :]
+if INPUT == 'infer_freqs':
     net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype)
 else:
     net_input = net_input_saved
