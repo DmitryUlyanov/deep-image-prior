@@ -18,7 +18,7 @@ from utils.sr_utils import *
 
 # Fix seeds
 seed = 0
-seed = np.random.seed(seed)
+np.random.seed(seed)
 torch.random.manual_seed(seed)
 
 parser = argparse.ArgumentParser()

@@ -26,7 +26,6 @@ np.random.seed(seed)
 torch.random.manual_seed(seed)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
