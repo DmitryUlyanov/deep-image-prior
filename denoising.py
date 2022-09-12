@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 from models import *
+from utils.common_utils import *
 from utils.denoising_utils import *
 from utils.wandb_utils import *
 import torch
@@ -18,6 +19,11 @@ os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
+
+# Fix seeds
+seed = 0
+np.random.seed(seed)
+torch.random.manual_seed(seed)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
@@ -60,11 +66,10 @@ else:
     assert False
 
 
-INPUT = ['noise', 'fourier', 'meshgrid'][args.input_index]
+INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net,input'  # 'net'
 train_input = True if ',' in OPT_OVER else False
-# reg_noise_std = 1. / 30. if INPUT == 'noise' else 0.  # set to 1./20. for sigma=50
 reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = 0.01
 
@@ -88,10 +93,14 @@ if fname == 'data/denoising/snail.jpg':
     net = net.type(dtype)
 
 elif fname in fnames:
-    num_iter = 3000
+    num_iter = 8000
     input_depth = 32
     figsize = 4
-
+    freq_dict = {
+        'method': 'log',
+        'max': 64,
+        'n_freqs': 8
+    }
     net = get_net(input_depth, 'skip', pad,
                   skip_n33d=128,
                   skip_n33u=128,
@@ -102,7 +111,7 @@ elif fname in fnames:
 else:
     assert False
 
-net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0])).type(dtype)
+net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
 
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])
@@ -117,34 +126,34 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
-                                                                      'noise',
-                                                                      (img_pil.size[1], img_pil.size[0])
-                                                                      ).type(dtype).detach().clone()
+noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
+if INPUT == 'fourier':
+    indices = sample_indices(input_depth, net_input_saved)
 out_avg = None
 last_net = None
 psrn_noisy_last = 0
 psnr_gt_list = []
-indices = torch.arange(0, input_depth, dtype=torch.float)
-sample_freqs = True if INPUT == 'fourier' else False
 i = 0
 
 
 def closure():
-    global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list, indices
+    global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list
 
-    if reg_noise_std > 0:
-        net_input = net_input_saved + (noise.normal_() * reg_noise_std)
-
-    if sample_freqs:
-        if i % 8000 == 0:  # sample freq
-            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                        input_depth, replacement=False)
-
-            assert len(torch.unique(indices)) == input_depth
-            print(indices)
-
+    if INPUT == 'noise':
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input = net_input_saved
+    elif INPUT == 'fourier':
         net_input = net_input_saved[:, indices, :, :]
+    elif INPUT == 'infer_freqs':
+        if reg_noise_std > 0:
+            net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input_ = net_input_saved
+        net_input = generate_fourier_feature_maps(net_input_,  (img_pil.size[1], img_pil.size[0]), dtype)
+    else:
+        net_input = net_input_saved
 
     out = net(net_input)
 
@@ -200,20 +209,30 @@ log_config = {
     'input type': INPUT,
     'Train input': train_input
 }
+log_config.update(**freq_dict)
+filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
-                 name='{}_depth_{}_{}'.format(os.path.basename(fname).split('.')[0], input_depth, INPUT),
+                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Denoising',
                  mode='online',
                  save_code=True,
                  config=log_config,
-                 notes='Input type {}, depth {}'.format(INPUT, input_depth))
+                 notes='Input type {} - {} random projected to depth {}'.format(
+                     INPUT, freq_dict['n_freqs'], input_depth))
 
-wandb.run.log_code(".")
+# wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
+
+if INPUT in ['fourier']:
+    net_input = net_input_saved[:, indices, :, :]
+elif INPUT == 'infer_freqs':
+    net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype)
+else:
+    net_input = net_input_saved
 
 out_np = torch_to_np(net(net_input))
 log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')

@@ -16,6 +16,11 @@ from models.downsampler import Downsampler
 
 from utils.sr_utils import *
 
+# Fix seeds
+seed = 0
+seed = np.random.seed(seed)
+torch.random.manual_seed(seed)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
@@ -23,6 +28,7 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
 args = parser.parse_args()
 
+os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
@@ -52,19 +58,22 @@ if PLOT:
 
 input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier'][args.input_index]
+INPUT = ['meshgrid', 'noise', 'fourier', 'infer_freqs'][args.input_index]
 pad = 'reflection'
 OPT_OVER = 'net,input'
 KERNEL_TYPE = 'lanczos2'
 train_input = True if OPT_OVER != 'net' else False
 LR = 0.01
 tv_weight = 0.0
-sample_freqs = True if INPUT == 'fourier' else False
-
 OPTIMIZER = 'adam'
+freq_dict = {
+        'method': 'log',
+        'max': 64,
+        'n_freqs': 8
+    }
 
 if factor == 4:
-    num_iter = 5000
+    num_iter = 10000
     reg_noise_std = 0.03
 elif factor == 8:
     num_iter = 4000
@@ -72,13 +81,11 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])).type(dtype)
-n_freqs = 8
-# penet = PENet(num_frequencies=8, img_size=(img_pil.size[1], img_pil.size[0])).type(dtype)
-# freq_input_saved = torch.rand(8).detach().type(dtype)
+net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
+                      freq_dict=freq_dict).type(dtype)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
-NET_TYPE = 'skip' # UNet, ResNet
+NET_TYPE = 'skip'  # UNet, ResNet
 net = get_net(input_depth, 'skip', pad,
               skip_n33d=128,
               skip_n33u=128,
@@ -97,17 +104,21 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 def closure():
     global i, net_input, last_net, psnr_LR_last, indices
 
-    if reg_noise_std > 0:
-        net_input = net_input_saved + (noise.normal_() * reg_noise_std)
-    if sample_freqs:
-        if i % 8000 == 0:  # sample freq
-            indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                        input_depth, replacement=False)
-
-            assert len(torch.unique(indices)) == input_depth
-            # print(indices)
-
+    if INPUT == 'noise':
+        if reg_noise_std > 0:
+            net_input = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input = net_input_saved
+    elif INPUT == 'fourier':
         net_input = net_input_saved[:, indices, :, :]
+    elif INPUT == 'infer_freqs':
+        if reg_noise_std > 0:
+            net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
+        else:
+            net_input_ = net_input_saved
+        net_input = generate_fourier_feature_maps(net_input_, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype)
+    else:
+        net_input = net_input_saved
 
     out_HR = net(net_input)
     out_LR = downsampler(out_HR)
@@ -123,24 +134,14 @@ def closure():
     psnr_LR = compare_psnr(imgs['LR_np'], torch_to_np(out_LR))
     psnr_HR = compare_psnr(imgs['HR_np'], torch_to_np(out_HR))
 
-    # if psnr_LR - psnr_LR_last < -5:
-    #     print('Falling back to previous checkpoint.')
-    #
-    #     for new_param, net_param in zip(last_net, net.parameters()):
-    #         net_param.data.copy_(new_param.cuda())
-    #
-    #     return total_loss * 0
-    # else:
-    #     last_net = [x.detach().cpu() for x in net.parameters()]
-    #     psnr_LR_last = psnr_LR
-
     # History
     psnr_history.append([psnr_LR, psnr_HR])
 
     if PLOT and i % show_every == 0:
+        if train_input:
+            log_inputs(net_input)
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
         wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
-        # print(indices)
         # out_HR_np = torch_to_np(out_HR)
         # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
 
@@ -159,19 +160,21 @@ log_config = {
     'input type': INPUT,
     'Train input': train_input
 }
+log_config.update(**freq_dict)
+filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), 'baseline'],
-                 name='{}_depth_{}_{}'.format(os.path.basename(path_to_image).split('.')[0], input_depth, INPUT),
+                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
                  job_type='train',
                  group='Super-Resolution',
-                 mode='online',
+                 mode='offline',
                  save_code=True,
                  config=log_config,
                  notes='Input type {} - {} random projected to depth {}'.format(
-                     INPUT, n_freqs, input_depth))
+                     INPUT, freq_dict['n_freqs'], input_depth))
 
-wandb.run.log_code(".")
+# wandb.run.log_code(".")
 
 psnr_history = []
 if train_input:
@@ -179,11 +182,10 @@ if train_input:
 else:
     net_input_saved = net_input.detach().clone()
 
-noise = net_input.detach().clone() if INPUT == 'noise' else get_noise(input_depth,
-                                                                      'noise',
-                                                                      (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0])
-                                                                      ).type(dtype).detach().clone()
-indices = torch.arange(0, input_depth, dtype=torch.float)
+noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
+if INPUT == 'fourier':
+    indices = sample_indices(input_depth, net_input_saved)
+
 last_net = None
 psnr_LR_last = 0
 

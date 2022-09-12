@@ -125,7 +125,15 @@ def fill_noise(x, noise_type):
     else:
         assert False
 
-def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
+
+def get_meshgrid(spatial_size):
+    X, Y = np.meshgrid(np.arange(0, spatial_size[1]) / float(spatial_size[1] - 1),
+                       np.arange(0, spatial_size[0]) / float(spatial_size[0] - 1))
+    meshgrid = np.concatenate([X[None, :], Y[None, :]])
+    return meshgrid
+
+
+def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, freq_dict=None):
     """Returns a pytorch.Tensor of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
     initialized in a specific way.
     Args:
@@ -145,19 +153,23 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10):
         net_input *= var            
     elif method == 'meshgrid': 
         assert input_depth == 2
-        X, Y = np.meshgrid(np.arange(0, spatial_size[1])/float(spatial_size[1]-1), np.arange(0, spatial_size[0])/float(spatial_size[0]-1))
-        meshgrid = np.concatenate([X[None,:], Y[None,:]])
+        meshgrid = get_meshgrid(spatial_size)
         net_input = np_to_torch(meshgrid)
     elif method == 'fourier':
-        X, Y = np.meshgrid(np.arange(0, spatial_size[1]) / float(spatial_size[1] - 1),
-                           np.arange(0, spatial_size[0]) / float(spatial_size[0] - 1))
-        meshgrid_np = np.concatenate([X[None, :], Y[None, :]])
+        meshgrid_np = get_meshgrid(spatial_size)
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
+    elif method == 'infer_freqs':
+        if freq_dict['method'] == 'linear':
+            net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
+        elif freq_dict['method'] == 'log':
+            net_input = 2. ** torch.linspace(0., freq_dict['n_freqs']-1, steps=freq_dict['n_freqs'])
+
     else:
         assert False
         
     return net_input
+
 
 def pil_to_np(img_PIL):
     '''Converts image in PIL format to np.array.
@@ -288,3 +300,20 @@ def get_embedder(multires=10, i=0):
     embedder_obj = Embedder(**embed_kwargs)
     embed = lambda x, eo=embedder_obj: eo.embed(x)
     return embed, embedder_obj.out_dim
+
+
+def sample_indices(input_depth, net_input_saved):
+    indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
+                                input_depth, replacement=False)
+
+    assert len(torch.unique(indices)) == input_depth
+    return indices
+
+
+def generate_fourier_feature_maps(net_input, spatial_size, dtype):
+    meshgrid_np = get_meshgrid(spatial_size)
+    meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0).type(dtype)
+    vp = net_input * torch.unsqueeze(meshgrid, -1)
+    vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
+    return vp_cat.flatten(-2, -1).permute(0, 3, 1, 2)
+
