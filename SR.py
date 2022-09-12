@@ -58,9 +58,9 @@ if PLOT:
 
 input_depth = 32
 
-INPUT = ['meshgrid', 'noise', 'fourier', 'infer_freqs'][args.input_index]
+INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net,input'
+OPT_OVER = 'net'
 KERNEL_TYPE = 'lanczos2'
 train_input = True if OPT_OVER != 'net' else False
 LR = 0.01
@@ -102,7 +102,7 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 
 
 def closure():
-    global i, net_input, last_net, psnr_LR_last, indices
+    global i, net_input, last_net, psnr_LR_last
 
     if INPUT == 'noise':
         if reg_noise_std > 0:
@@ -110,7 +110,8 @@ def closure():
         else:
             net_input = net_input_saved
     elif INPUT == 'fourier':
-        net_input = net_input_saved[:, indices, :, :]
+        # net_input = net_input_saved[:, indices, :, :]
+        net_input = net_input_saved
     elif INPUT == 'infer_freqs':
         if reg_noise_std > 0:
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
@@ -164,11 +165,11 @@ log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=[INPUT, 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, INPUT),
+                 tags=['random_{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, 'random_{}'.format(INPUT)),
                  job_type='train',
-                 group='Super-Resolution',
-                 mode='offline',
+                 group='Super-Resolution-frequency-capacity',
+                 mode='online',
                  save_code=True,
                  config=log_config,
                  notes='Input type {} - {} random projected to depth {}'.format(
@@ -183,8 +184,8 @@ else:
     net_input_saved = net_input.detach().clone()
 
 noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
-if INPUT == 'fourier':
-    indices = sample_indices(input_depth, net_input_saved)
+# if INPUT == 'fourier':
+#     # indices = sample_indices(input_depth, net_input_saved)
 
 last_net = None
 psnr_LR_last = 0
