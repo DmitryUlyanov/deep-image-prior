@@ -20,6 +20,12 @@ torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
 
+# Fix seeds
+seed = 0
+torch.random.seed(seed)
+np.random.seed(seed)
+torch.random.manual_seed(seed)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
 parser.add_argument('--gpu', default='1')
@@ -249,6 +255,7 @@ log_config = {
     'input type': INPUT,
     'train_input': train_input
 }
+log_config.update(**freq_dict)
 filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
