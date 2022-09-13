@@ -13,6 +13,7 @@ RUN apt-get -y install python3
 RUN apt-get -y install python3-pip
 
 # Clone deep image prior repository
+Run ls -alh
 RUN git clone https://github.com/NimrodShabtay/deep-image-prior.git
 WORKDIR /deep-image-prior
 RUN python3 -m pip install -r requirements.txt

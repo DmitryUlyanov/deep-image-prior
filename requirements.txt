@@ -1,6 +1,5 @@
 matplotlib==3.3.4
 numpy==1.19.5
-opencv_python==4.5.5.64
 Pillow==9.2.0
 random_fourier_features_pytorch==1.0.0
 scikit_image==0.17.2
