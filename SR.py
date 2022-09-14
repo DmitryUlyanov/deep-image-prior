@@ -26,6 +26,7 @@ parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
+parser.add_argument('--learning_rate', default=0.01, type=float)
 args = parser.parse_args()
 
 os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
@@ -60,15 +61,19 @@ input_depth = 32
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net'
+if INPUT == 'infer_freqs':
+    OPT_OVER = 'net,input'
+else:
+    OPT_OVER = 'net'
+
 KERNEL_TYPE = 'lanczos2'
 train_input = True if OPT_OVER != 'net' else False
-LR = 0.01
+LR = args.learning_rate
 tv_weight = 0.0
 OPTIMIZER = 'adam'
 freq_dict = {
         'method': 'log',
-        'max': 64,
+        'cosine_only': False,
         'n_freqs': 8
     }
 
@@ -165,10 +170,10 @@ log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['random_{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, 'random_{}'.format(INPUT)),
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
-                 group='Super-Resolution-frequency-capacity',
+                 group='Super-Resolution',
                  mode='online',
                  save_code=True,
                  config=log_config,

@@ -159,12 +159,19 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, freq
         meshgrid_np = get_meshgrid(spatial_size)
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         # net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
-        net_input = positional_encoding(v=meshgrid, m=40, sigma=10, sample_depth=input_depth // 4).permute(0, 3, 1, 2)
+        # net_input = positional_encoding(v=meshgrid, m=40, sigma=10, sample_depth=input_depth // 2).permute(0, 3, 1, 2)
+        freqs = 2. ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
+        net_input = generate_fourier_feature_maps(freqs, spatial_size)
+
     elif method == 'infer_freqs':
         if freq_dict['method'] == 'linear':
             net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
         elif freq_dict['method'] == 'log':
             net_input = 2. ** torch.linspace(0., freq_dict['n_freqs']-1, steps=freq_dict['n_freqs'])
+            if freq_dict['cosine_only']:
+                assert input_depth == 2 * list(net_input.shape)[0]
+            else:
+                assert input_depth == 4 * list(net_input.shape)[0]
 
     else:
         assert False
@@ -311,11 +318,14 @@ def sample_indices(input_depth, net_input_saved):
     return indices
 
 
-def generate_fourier_feature_maps(net_input, spatial_size, dtype):
+def generate_fourier_feature_maps(net_input, spatial_size, dtype=torch.float32, only_cosine=False):
     meshgrid_np = get_meshgrid(spatial_size)
     meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0).type(dtype)
     vp = net_input * torch.unsqueeze(meshgrid, -1)
-    vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
+    if only_cosine:
+        vp_cat = torch.cat((torch.cos(vp), ), dim=-1)
+    else:
+        vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
     return vp_cat.flatten(-2, -1).permute(0, 3, 1, 2)
 
 

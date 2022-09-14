@@ -29,6 +29,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
+parser.add_argument('--learning_rate', default=0.01, type=float)
+
 args = parser.parse_args()
 
 
@@ -67,10 +69,14 @@ else:
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
-OPT_OVER = 'net'  # 'net'
+if INPUT == 'infer_freqs':
+    OPT_OVER = 'net,input'
+else:
+    OPT_OVER = 'net'
+
 train_input = True if ',' in OPT_OVER else False
 reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
-LR = 0.01
+LR = args.learning_rate
 
 OPTIMIZER = 'adam'  # 'LBFGS'
 show_every = 100
@@ -214,8 +220,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['random_{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, 'random_{}'.format(INPUT)),
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Denoising',
                  mode='online',
