@@ -3,13 +3,13 @@ from __future__ import print_function
 from models import *
 from utils.common_utils import *
 from utils.denoising_utils import *
-from utils.wandb_utils import *
+# from utils.wandb_utils import *
 import torch
 import torch.optim
 import matplotlib.pyplot as plt
 
 import os
-import wandb
+# import wandb
 import argparse
 import numpy as np
 # from skimage.measure import compare_psnr
@@ -177,10 +177,10 @@ def closure():
         print('Iteration %05d    Loss %f   PSNR_noisy: %f   PSRN_gt: %f PSNR_gt_sm: %f' % (
             i, total_loss.item(), psrn_noisy, psrn_gt, psrn_gt_sm))
         psnr_gt_list.append(psrn_gt)
-        if train_input:
-            log_inputs(net_input)
+        # if train_input:
+        #     log_inputs(net_input)
 
-        wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
+        # wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
 
     # Backtracking
     if i % show_every:
@@ -197,7 +197,7 @@ def closure():
 
     i += 1
 
-    wandb.log({'training loss': total_loss.item()}, commit=True)
+    # wandb.log({'training loss': total_loss.item()}, commit=True)
     return total_loss
 
 
