@@ -15,7 +15,6 @@ import numpy as np
 # from skimage.measure import compare_psnr
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 
-os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
 dtype = torch.cuda.FloatTensor
@@ -26,7 +25,7 @@ np.random.seed(seed)
 torch.random.manual_seed(seed)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpu', default='0')
+parser.add_argument('--gpu', default='2')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
 args = parser.parse_args()
@@ -213,17 +212,17 @@ log_config = {
 }
 log_config.update(**freq_dict)
 filename = os.path.basename(fname).split('.')[0]
-run = wandb.init(project="Fourier features DIP",
-                 entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                 job_type='train',
-                 group='Denoising',
-                 mode='online',
-                 save_code=True,
-                 config=log_config,
-                 notes='Input type {} - {} random projected to depth {}'.format(
-                     INPUT, freq_dict['n_freqs'], input_depth))
+# run = wandb.init(project="Fourier features DIP",
+#                  entity="impliciteam",
+#                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+#                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
+#                  job_type='train',
+#                  group='Denoising',
+#                  mode='online',
+#                  save_code=True,
+#                  config=log_config,
+#                  notes='Input type {} - {} random projected to depth {}'.format(
+#                      INPUT, freq_dict['n_freqs'], input_depth))
 
 # wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
@@ -238,7 +237,7 @@ else:
     net_input = net_input_saved
 
 out_np = torch_to_np(net(net_input))
-log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')
+# log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')
 q = plot_image_grid([np.clip(out_np, 0, 1), img_np], factor=13)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))
