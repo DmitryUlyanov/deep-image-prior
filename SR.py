@@ -26,13 +26,14 @@ parser.add_argument('--config')
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
-parser.add_argument('--learning_rate', default=0.01, type=float)
+parser.add_argument('--learning_rate', default=0.001, type=float)
+parser.add_argument('--num_freqs', default=8, type=int)
 args = parser.parse_args()
 
 os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark =True
+torch.backends.cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
 
 imsize = -1
@@ -57,8 +58,6 @@ if PLOT:
                                         compare_psnr(imgs['HR_np'], imgs['bicubic_np']),
                                         compare_psnr(imgs['HR_np'], imgs['nearest_np'])))
 
-input_depth = 32
-
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 pad = 'reflection'
 if INPUT == 'infer_freqs':
@@ -73,10 +72,13 @@ tv_weight = 0.0
 OPTIMIZER = 'adam'
 freq_dict = {
         'method': 'log',
-        'cosine_only': False,
-        'n_freqs': 8
+        'cosine_only': True,
+        'n_freqs': args.num_freqs,
+        'base': 2 ** (8 / (args.num_freqs-1))
     }
 
+representation_scale = 2 if freq_dict['cosine_only'] is True else 4
+input_depth = args.num_freqs * representation_scale
 if factor == 4:
     num_iter = 10000
     reg_noise_std = 0.03
@@ -122,7 +124,8 @@ def closure():
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
         else:
             net_input_ = net_input_saved
-        net_input = generate_fourier_feature_maps(net_input_, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype)
+        net_input = generate_fourier_feature_maps(net_input_, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype,
+                                                  freq_dict['cosine_only'])
     else:
         net_input = net_input_saved
 
@@ -144,8 +147,6 @@ def closure():
     psnr_history.append([psnr_LR, psnr_HR])
 
     if PLOT and i % show_every == 0:
-        if train_input:
-            log_inputs(net_input)
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
         wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
         # out_HR_np = torch_to_np(out_HR)
@@ -170,8 +171,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
+                 tags=['{}_cosine_only'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}_cosine_only'.format(INPUT)),
                  job_type='train',
                  group='Super-Resolution',
                  mode='online',
@@ -197,7 +198,21 @@ psnr_LR_last = 0
 
 i = 0
 p = get_params(OPT_OVER, net, net_input)
+if train_input:
+    if INPUT == 'infer_freqs':
+        net_input = generate_fourier_feature_maps(net_input_saved, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
+                                                  dtype,
+                                                  freq_dict['cosine_only'])
+    else:
+        log_inputs(net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
+if INPUT == 'infer_freqs':
+    net_input = generate_fourier_feature_maps(net_input_saved, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype,
+                                              freq_dict['cosine_only'])
+    if train_input:
+        log_inputs(net_input)
+else:
+    net_input = net_input_saved
 
 out_HR_np = np.clip(torch_to_np(net(net_input)), 0, 1)
 result_deep_prior = put_in_center(out_HR_np, imgs['orig_np'].shape[1:])

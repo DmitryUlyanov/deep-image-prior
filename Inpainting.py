@@ -30,7 +30,7 @@ parser.add_argument('--config')
 parser.add_argument('--gpu', default='1')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
-
+parser.add_argument('--num_freqs', default=8, type=int)
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -78,15 +78,16 @@ plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 freq_dict = {
         'method': 'log',
-        'cosine_only': True,
-        'n_freqs': 9
+        'cosine_only': False,
+        'n_freqs': args.num_freqs,
+        'base': 2 ** (8 / (args.num_freqs-1))
     }
 pad = 'reflection'  # 'zero'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
     INPUT = 'fourier'  # 'meshgrid' # 'infer_freqs'
-    input_depth = 32
+    input_depth = args.num_freqs * 4
     LR = args.learning_rate
     num_iter = 8001
     param_noise = False
@@ -103,8 +104,8 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'infer_freqs'  #'infer_freqs'  # 'noise'
-    input_depth = 32
+    INPUT = 'fourier'  # 'infer_freqs'  # 'noise'
+    input_depth = args.num_freqs * 4
     LR = args.learning_rate
     num_iter = 6001
     param_noise = False
@@ -122,7 +123,7 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
 
 elif 'library.png' in img_path:
     INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
-    input_depth = 18
+    input_depth = args.num_freqs * 4
 
     num_iter = 8001
     show_every = 50
@@ -168,7 +169,6 @@ else:
 
 net = net.type(dtype)
 net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
-print(net_input)
 noise = net_input.detach().clone()
 
 if INPUT == 'infer_freqs':
@@ -229,8 +229,6 @@ def closure():
         psnr_masked = compare_psnr(img_np * img_mask_np, out.detach().cpu().numpy()[0])
         psnr_gt_list.append(psnr_gt)
         psnr_mask_list.append(psnr_masked)
-        if train_input:
-            log_inputs(net_input)
 
         print('Iteration %05d    Loss %f    psnr_gt %f   psnr_masked %f' % (i, total_loss.item(), psnr_gt, psnr_masked))
         wandb.log({'psnr_gt': psnr_gt, 'psnr_noisy': psnr_masked}, commit=False)
@@ -267,8 +265,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}_cos_only'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}_cos_only'.format(INPUT)),
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Inpainting',
                  mode='online',
@@ -289,17 +287,23 @@ noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.deta
 #     indices = sample_indices(input_depth, net_input_saved)
 
 p = get_params(OPT_OVER, net, net_input)
+if train_input:
+    if INPUT == 'infer_freqs':
+        net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
+                                                  only_cosine=freq_dict['cosine_only'])
+    else:
+        log_inputs(net_input)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
-
 # if INPUT == 'fourier':
 #     net_input = net_input_saved[:, indices, :, :]
 if INPUT == 'infer_freqs':
     net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
                                               only_cosine=freq_dict['cosine_only'])
+    if train_input:
+        log_inputs(net_input)
 else:
     net_input = net_input_saved
 
-print(net_input_saved)
 out_np = torch_to_np(net(net_input))
 log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Inpainting')
 plot_image_grid([out_np, img_np], factor=5)

@@ -160,14 +160,14 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1./10, freq
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         # net_input = rff.functional.positional_encoding(meshgrid, m=40, sigma=10).permute(0, 3, 1, 2)
         # net_input = positional_encoding(v=meshgrid, m=40, sigma=10, sample_depth=input_depth // 2).permute(0, 3, 1, 2)
-        freqs = 2. ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
-        net_input = generate_fourier_feature_maps(freqs, spatial_size)
+        freqs = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
+        net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
 
     elif method == 'infer_freqs':
         if freq_dict['method'] == 'linear':
             net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
         elif freq_dict['method'] == 'log':
-            net_input = 2. ** torch.linspace(0., freq_dict['n_freqs']-1, steps=freq_dict['n_freqs'])
+            net_input = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs']-1, steps=freq_dict['n_freqs'])
             if freq_dict['cosine_only']:
                 assert input_depth == 2 * list(net_input.shape)[0]
             else:

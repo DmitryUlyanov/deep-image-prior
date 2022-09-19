@@ -30,7 +30,7 @@ parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
-
+parser.add_argument('--num_freqs', default=8, type=int)
 args = parser.parse_args()
 
 
@@ -99,13 +99,16 @@ if fname == 'data/denoising/snail.jpg':
 
 elif fname in fnames:
     num_iter = 8000
-    input_depth = 32
     figsize = 4
     freq_dict = {
         'method': 'log',
-        'max': 64,
-        'n_freqs': 8
+        'cosine_only': True,
+        'n_freqs': args.num_freqs,
+        'base': 2 ** (8 / (args.num_freqs-1))
     }
+
+    representation_scale = 2 if freq_dict['cosine_only'] is True else 4
+    input_depth = args.num_freqs * representation_scale
     net = get_net(input_depth, 'skip', pad,
                   skip_n33d=128,
                   skip_n33u=128,
@@ -183,8 +186,6 @@ def closure():
         print('Iteration %05d    Loss %f   PSNR_noisy: %f   PSRN_gt: %f PSNR_gt_sm: %f' % (
             i, total_loss.item(), psrn_noisy, psrn_gt, psrn_gt_sm))
         psnr_gt_list.append(psrn_gt)
-        if train_input:
-            log_inputs(net_input)
 
         wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
 
@@ -232,13 +233,19 @@ run = wandb.init(project="Fourier features DIP",
 
 # wandb.run.log_code(".")
 p = get_params(OPT_OVER, net, net_input)
-optimize(OPTIMIZER, p, closure, LR, num_iter)
+if train_input:
+    if INPUT == 'infer_freqs':
+        net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
+                                                  only_cosine=freq_dict['cosine_only'])
+    else:
+        log_inputs(net_input)
 
-if INPUT in ['fourier']:
-    # net_input = net_input_saved[:, indices, :, :]
-    net_input = net_input_saved
-elif INPUT == 'infer_freqs':
-    net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype)
+optimize(OPTIMIZER, p, closure, LR, num_iter)
+if INPUT == 'infer_freqs':
+    net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
+                                              only_cosine=freq_dict['cosine_only'])
+    if train_input:
+        log_inputs(net_input)
 else:
     net_input = net_input_saved
 
