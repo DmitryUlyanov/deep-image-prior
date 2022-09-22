@@ -1,9 +1,9 @@
 from __future__ import print_function
 
 from models import *
-from utils.common_utils import *
 from utils.denoising_utils import *
 from utils.wandb_utils import *
+from utils.freq_utils import *
 import torch
 import torch.optim
 import matplotlib.pyplot as plt
@@ -75,7 +75,7 @@ else:
     OPT_OVER = 'net'
 
 train_input = True if ',' in OPT_OVER else False
-reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
+reg_noise_std = 0  # 1. / 30.  # set to 1./20. for sigma=50
 LR = args.learning_rate
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -102,20 +102,23 @@ elif fname in fnames:
     figsize = 4
     freq_dict = {
         'method': 'log',
-        'cosine_only': True,
+        'cosine_only': False,
         'n_freqs': args.num_freqs,
-        'base': 2 ** (8 / (args.num_freqs-1))
+        'base': 2 ** (8 / (args.num_freqs-1)),
+        'dropout': False
     }
 
     representation_scale = 2 if freq_dict['cosine_only'] is True else 4
     input_depth = args.num_freqs * representation_scale
-    net = get_net(input_depth, 'skip', pad,
-                  skip_n33d=128,
-                  skip_n33u=128,
-                  skip_n11=4,
-                  num_scales=5,
-                  upsample_mode='bilinear').type(dtype)
+    # net = get_net(input_depth, 'skip', pad,
+    #               skip_n33d=128,
+    #               skip_n33u=128,
+    #               skip_n11=4,
+    #               num_scales=5,
+    #               upsample_mode='bilinear').type(dtype)
 
+    # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+    net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 else:
     assert False
 
@@ -161,7 +164,14 @@ def closure():
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
         else:
             net_input_ = net_input_saved
+        if freq_dict['dropout']:
+            drp_rate = 0.5
+            net_input_ = torch.nn.Dropout(drp_rate)(net_input_) * drp_rate
+
         net_input = generate_fourier_feature_maps(net_input_,  (img_pil.size[1], img_pil.size[0]), dtype)
+        # net_input = generate_fourier_feature_maps(net_input_saved,  (img_pil.size[1], img_pil.size[0]), dtype)
+        # if reg_noise_std > 0:
+        #     net_input = net_input_saved + (noise.normal_() * reg_noise_std)
     else:
         net_input = net_input_saved
 
@@ -190,19 +200,23 @@ def closure():
         wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
 
     # Backtracking
-    if i % show_every:
-        if psrn_noisy - psrn_noisy_last < -5:
-            print('Falling back to previous checkpoint.')
-
-            for new_param, net_param in zip(last_net, net.parameters()):
-                net_param.data.copy_(new_param.cuda())
-
-            return total_loss * 0
-        else:
-            last_net = [x.detach().cpu() for x in net.parameters()]
-            psrn_noisy_last = psrn_noisy
+    # if i % show_every:
+    #     if psrn_noisy - psrn_noisy_last < -5:
+    #         print('Falling back to previous checkpoint.')
+    #
+    #         for new_param, net_param in zip(last_net, net.parameters()):
+    #             net_param.data.copy_(new_param.cuda())
+    #
+    #         return total_loss * 0
+    #     else:
+    #         last_net = [x.detach().cpu() for x in net.parameters()]
+    #         psrn_noisy_last = psrn_noisy
 
     i += 1
+
+    # Log metrics
+    if INPUT == 'infer_freqs':
+        visualize_learned_frequencies(net_input_saved)
 
     wandb.log({'training loss': total_loss.item()}, commit=True)
     return total_loss
@@ -215,23 +229,25 @@ log_config = {
     'loss': type(mse).__name__,
     'input depth': input_depth,
     'input type': INPUT,
-    'Train input': train_input
+    'Train input': train_input,
+    'Reg. Noise STD': reg_noise_std
 }
 log_config.update(**freq_dict)
 filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, 'FCN'],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Denoising',
                  mode='online',
                  save_code=True,
                  config=log_config,
-                 notes='Input type {} - {} random projected to depth {}'.format(
-                     INPUT, freq_dict['n_freqs'], input_depth))
+                 notes='FCN'
+                 )
 
 # wandb.run.log_code(".")
+print(net)
 p = get_params(OPT_OVER, net, net_input)
 if train_input:
     if INPUT == 'infer_freqs':

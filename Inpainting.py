@@ -29,6 +29,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config')
 parser.add_argument('--gpu', default='1')
 parser.add_argument('--index', default=0, type=int)
+parser.add_argument('--input_index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
 args = parser.parse_args()
@@ -59,6 +60,7 @@ img_dict = {
     }
 }
 
+INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 img_path = img_dict[args.index]['img_path']
 mask_path = img_dict[args.index]['mask_path']
 NET_TYPE = 'skip_depth6'  # one of skip_depth4|skip_depth2|UNET|ResNet
@@ -86,7 +88,7 @@ pad = 'reflection'  # 'zero'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
-    INPUT = 'fourier'  # 'meshgrid' # 'infer_freqs'
+    # INPUT = 'fourier'  # 'meshgrid' # 'infer_freqs'
     input_depth = args.num_freqs * 4
     LR = args.learning_rate
     num_iter = 8001
@@ -104,10 +106,10 @@ if 'vase.png' in img_path:
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
-    INPUT = 'fourier'  # 'infer_freqs'  # 'noise'
+    # INPUT = 'infer_freqs'  # 'fourier'  # 'noise'
     input_depth = args.num_freqs * 4
     LR = args.learning_rate
-    num_iter = 6001
+    num_iter = 500
     param_noise = False
     show_every = 50
     figsize = 5
@@ -122,7 +124,7 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
                need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
 elif 'library.png' in img_path:
-    INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
+    # INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
     input_depth = args.num_freqs * 4
 
     num_iter = 8001
@@ -191,11 +193,13 @@ psnr_gt_list = []
 psnr_mask_list = []
 psnr_masked_last = 0.0
 last_net = None
+best_psnr_gt = -1.0
+best_img = None
 i = 0
 
 
 def closure():
-    global i, last_net, psnr_masked_last
+    global i, last_net, psnr_masked_last, best_psnr_gt, best_img
 
     if param_noise:
         for n in [x for x in net.parameters() if len(x.size()) == 4]:
@@ -225,13 +229,17 @@ def closure():
     total_loss.backward()
 
     if PLOT and i % show_every == 0:
-        psnr_gt = compare_psnr(img_np, out.detach().cpu().numpy()[0])
-        psnr_masked = compare_psnr(img_np * img_mask_np, out.detach().cpu().numpy()[0])
+        out_np = out.detach().cpu().numpy()[0]
+        psnr_gt = compare_psnr(img_np, out_np)
+        psnr_masked = compare_psnr(img_np * img_mask_np, out_np)
         psnr_gt_list.append(psnr_gt)
         psnr_mask_list.append(psnr_masked)
 
         print('Iteration %05d    Loss %f    psnr_gt %f   psnr_masked %f' % (i, total_loss.item(), psnr_gt, psnr_masked))
         wandb.log({'psnr_gt': psnr_gt, 'psnr_noisy': psnr_masked}, commit=False)
+        if psnr_gt > best_psnr_gt:
+            best_psnr_gt = psnr_gt
+            best_img = np.copy(out_np)
         # plot_image_grid([np.clip(out_np, 0, 1)], factor=figsize, nrow=1)
 
     if i % show_every == 0:
@@ -306,6 +314,7 @@ else:
 
 out_np = torch_to_np(net(net_input))
 log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Inpainting')
+log_images(np.array([np.clip(best_img, 0, 1), img_np]), num_iter, task='Best Image', psnr=best_psnr_gt)
 plot_image_grid([out_np, img_np], factor=5)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))

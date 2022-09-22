@@ -4,6 +4,9 @@ from .resnet import ResNet
 from .unet import UNet
 from .positional_encoding_net import PENet
 import torch.nn as nn
+from .mlp import MLP
+from .simple_fcn import FCN
+
 
 def get_net(input_depth, NET_TYPE, pad, upsample_mode, n_channels=3, act_fun='LeakyReLU', skip_n33d=128, skip_n33u=128, skip_n11=4, num_scales=5, downsample_mode='stride'):
     if NET_TYPE == 'ResNet':
@@ -15,7 +18,6 @@ def get_net(input_depth, NET_TYPE, pad, upsample_mode, n_channels=3, act_fun='Le
                                             num_channels_skip = [skip_n11]*num_scales if isinstance(skip_n11, int) else skip_n11, 
                                             upsample_mode=upsample_mode, downsample_mode=downsample_mode,
                                             need_sigmoid=True, need_bias=True, pad=pad, act_fun=act_fun)
-
     elif NET_TYPE == 'texture_nets':
         net = get_texture_nets(inp=input_depth, ratios = [32, 16, 8, 4, 2, 1], fill_noise=False,pad=pad)
 

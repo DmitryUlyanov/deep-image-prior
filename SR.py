@@ -1,6 +1,7 @@
 from __future__ import print_function
 from models import *
 from utils.wandb_utils import *
+from utils.freq_utils import *
 import matplotlib.pyplot as plt
 import argparse
 import os
@@ -28,6 +29,7 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
 parser.add_argument('--learning_rate', default=0.001, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
+parser.add_argument('--reg_noise_std', default=0.03, type=float)
 args = parser.parse_args()
 
 os.environ['WANDB_IGNORE_GLOBS'] = './venv/**/*.*'
@@ -72,7 +74,7 @@ tv_weight = 0.0
 OPTIMIZER = 'adam'
 freq_dict = {
         'method': 'log',
-        'cosine_only': True,
+        'cosine_only': False,
         'n_freqs': args.num_freqs,
         'base': 2 ** (8 / (args.num_freqs-1))
     }
@@ -81,7 +83,8 @@ representation_scale = 2 if freq_dict['cosine_only'] is True else 4
 input_depth = args.num_freqs * representation_scale
 if factor == 4:
     num_iter = 10000
-    reg_noise_std = 0.03
+    # reg_noise_std = 0.03
+    reg_noise_std = args.reg_noise_std
 elif factor == 8:
     num_iter = 4000
     reg_noise_std = 0.05
@@ -90,16 +93,18 @@ else:
 
 net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
                       freq_dict=freq_dict).type(dtype)
+# net_input = torch.Tensor([torch.Tensor([0]), * list(2 ** torch.linspace(0, freq_dict['n_freqs']-2, freq_dict['n_freqs']-1))]).type(dtype) / (factor // 2)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
 NET_TYPE = 'skip'  # UNet, ResNet
-net = get_net(input_depth, 'skip', pad,
-              skip_n33d=128,
-              skip_n33u=128,
-              skip_n11=4,
-              num_scales=5,
-              upsample_mode='bilinear').type(dtype)
-
+# net = get_net(input_depth, 'skip', pad,
+#               skip_n33d=128,
+#               skip_n33u=128,
+#               skip_n11=4,
+#               num_scales=5,
+#               upsample_mode='bilinear').type(dtype)
+# net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 # Losses
 mse = torch.nn.MSELoss().type(dtype)
 
@@ -109,7 +114,7 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 
 
 def closure():
-    global i, net_input, last_net, psnr_LR_last
+    global i, net_input, last_net, psnr_LR_last, LR, reduce_lr
 
     if INPUT == 'noise':
         if reg_noise_std > 0:
@@ -143,6 +148,21 @@ def closure():
     psnr_LR = compare_psnr(imgs['LR_np'], torch_to_np(out_LR))
     psnr_HR = compare_psnr(imgs['HR_np'], torch_to_np(out_HR))
 
+    # Backtracking
+    # if psnr_LR - psnr_LR_last < -5:
+    #     print('Falling back to previous checkpoint.')
+    #     if reduce_lr:
+    #         LR *= 0.1
+    #     for new_param, net_param in zip(last_net, net.parameters()):
+    #         net_param.data.copy_(new_param.cuda())
+    #
+    #     reduce_lr = False
+    #     return total_loss * 0
+    # else:
+    #     reduce_lr = True
+    #     last_net = [x.detach().cpu() for x in net.parameters()]
+    #     psnr_LR_last = psnr_LR
+
     # History
     psnr_history.append([psnr_LR, psnr_HR])
 
@@ -153,7 +173,12 @@ def closure():
         # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
 
     i += 1
-    wandb.log({'training loss': total_loss.item()}, commit=True)
+
+    # Log metrics
+    if INPUT == 'infer_freqs':
+        visualize_learned_frequencies(net_input_saved)
+
+    wandb.log({'training loss': total_loss.item(), 'Learning Rate': LR}, commit=True)
     return total_loss
 
 
@@ -165,14 +190,16 @@ log_config = {
     'loss': type(mse).__name__,
     'input depth': input_depth,
     'input type': INPUT,
-    'Train input': train_input
+    'Train input': train_input,
+    'reg_noise_std': reg_noise_std
+
 }
 log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}_cosine_only'.format(INPUT), 'depth:{}'.format(input_depth), filename],
-                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}_cosine_only'.format(INPUT)),
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, 'FCN'],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Super-Resolution',
                  mode='online',
@@ -195,7 +222,9 @@ noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.deta
 
 last_net = None
 psnr_LR_last = 0
+reduce_lr = True
 
+print(net)
 i = 0
 p = get_params(OPT_OVER, net, net_input)
 if train_input:
@@ -205,6 +234,8 @@ if train_input:
                                                   freq_dict['cosine_only'])
     else:
         log_inputs(net_input)
+
+# wandb.watch(net, log='all', log_freq=show_every)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 if INPUT == 'infer_freqs':
     net_input = generate_fourier_feature_maps(net_input_saved, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype,
