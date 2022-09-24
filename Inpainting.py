@@ -9,6 +9,8 @@ import numpy as np
 from models.resnet import ResNet
 from models.unet import UNet
 from models.skip import skip
+from models.mlp import MLP
+from models.simple_fcn import FCN
 import torch
 import torch.optim
 import wandb
@@ -63,7 +65,7 @@ img_dict = {
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 img_path = img_dict[args.index]['img_path']
 mask_path = img_dict[args.index]['mask_path']
-NET_TYPE = 'skip_depth6'  # one of skip_depth4|skip_depth2|UNET|ResNet
+NET_TYPE = 'MLP'  # 'FCN' 'skip_depth6'  # one of skip_depth4|skip_depth2|UNET|ResNet
 
 img_pil, img_np = get_image(img_path, imsize)
 img_mask_pil, img_mask_np = get_image(mask_path, imsize)
@@ -97,31 +99,35 @@ if 'vase.png' in img_path:
     figsize = 5
     reg_noise_std = 0.03
 
-    net = skip(input_depth, img_np.shape[0],
-               num_channels_down=[128] * 5,
-               num_channels_up=[128] * 5,
-               num_channels_skip=[0] * 5,
-               upsample_mode='nearest', filter_skip_size=1, filter_size_up=3, filter_size_down=3,
-               need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+    # net = skip(input_depth, img_np.shape[0],
+    #            num_channels_down=[128] * 5,
+    #            num_channels_up=[128] * 5,
+    #            num_channels_skip=[0] * 5,
+    #            upsample_mode='nearest', filter_skip_size=1, filter_size_up=3, filter_size_down=3,
+    #            need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+    net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
 elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
     # INPUT = 'infer_freqs'  # 'fourier'  # 'noise'
     input_depth = args.num_freqs * 4
     LR = args.learning_rate
-    num_iter = 500
+    num_iter = 6001
     param_noise = False
     show_every = 50
     figsize = 5
     reg_noise_std = 0.03
 
-    net = skip(input_depth, img_np.shape[0],
-               num_channels_down=[128] * 5,
-               num_channels_up=[128] * 5,
-               num_channels_skip=[128] * 5,
-               filter_size_up=3, filter_size_down=3,
-               upsample_mode='nearest', filter_skip_size=1,
-               need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+    # net = skip(input_depth, img_np.shape[0],
+    #            num_channels_down=[128] * 5,
+    #            num_channels_up=[128] * 5,
+    #            num_channels_skip=[128] * 5,
+    #            filter_size_up=3, filter_size_down=3,
+    #            upsample_mode='nearest', filter_skip_size=1,
+    #            need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+
+    # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+    net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
 elif 'library.png' in img_path:
     # INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
@@ -163,6 +169,14 @@ elif 'library.png' in img_path:
 
         LR = 0.001
         param_noise = False
+
+    elif NET_TYPE == 'MLP':
+        net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+        LR = args.learning_rate
+
+    elif NET_TYPE == 'FCN':
+        net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+        LR = args.learning_rate
 
     else:
         assert False
@@ -284,7 +298,7 @@ run = wandb.init(project="Fourier features DIP",
 
 # wandb.run.log_code(".")
 
-
+print(net)
 if train_input:
     net_input_saved = net_input
 else:

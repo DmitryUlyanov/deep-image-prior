@@ -114,7 +114,7 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 
 
 def closure():
-    global i, net_input, last_net, psnr_LR_last, LR, reduce_lr
+    global i, net_input, last_net, psnr_LR_last, LR, reduce_lr, best_img, best_psnr_hr
 
     if INPUT == 'noise':
         if reg_noise_std > 0:
@@ -169,9 +169,11 @@ def closure():
     if PLOT and i % show_every == 0:
         print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
         wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
-        # out_HR_np = torch_to_np(out_HR)
+        out_HR_np = torch_to_np(out_HR)
         # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
-
+        if psnr_HR > best_psnr_hr:
+            best_psnr_hr = psnr_HR
+            best_img = np.copy(out_HR_np)
     i += 1
 
     # Log metrics
@@ -223,7 +225,8 @@ noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.deta
 last_net = None
 psnr_LR_last = 0
 reduce_lr = True
-
+best_psnr_hr = -1.0
+best_img = None
 print(net)
 i = 0
 p = get_params(OPT_OVER, net, net_input)
@@ -254,6 +257,7 @@ plot_image_grid([imgs['HR_np'],
                  out_HR_np], factor=4, nrow=1)
 
 log_images(np.array([np.clip(out_HR_np, 0, 1), imgs['HR_np']]), num_iter, task='Super-Resolution')
+log_images(np.array([np.clip(best_img, 0, 1), imgs['HR_np']]), num_iter, task='Best Image', psnr=best_psnr_hr)
 fig, axes = plt.subplots(1, 2)
 axes[0].plot([h[0] for h in psnr_history])
 axes[0].set_title('LR PSNR\nmax: {:.3f}'.format(max([h[0] for h in psnr_history])))

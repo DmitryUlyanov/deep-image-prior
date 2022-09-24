@@ -190,10 +190,11 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1. / 10, fr
                                             sample_depth=input_depth // 4).permute(0, 3, 1, 2)
         elif freq_dict['method'] == 'log':
             net_input = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
-            if freq_dict['cosine_only']:
-                assert input_depth == 2 * list(net_input.shape)[0]
-            else:
-                assert input_depth == 4 * list(net_input.shape)[0]
+            # net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
+            # if freq_dict['cosine_only']:
+            #     assert input_depth == 2 * list(net_input.shape)[0]
+            # else:
+            #     assert input_depth == 4 * list(net_input.shape)[0]
 
     else:
         assert False
@@ -276,10 +277,10 @@ def optimize(optimizer_type, parameters, closure, LR, num_iter):
 
     elif optimizer_type == 'adam':
         print('Starting optimization with ADAM')
-        optimizer = torch.optim.Adam(parameters, lr=LR)
-        # optimizer = torch.optim.Adam([
-        #     {'params': parameters[:-1]},
-        #     {'params': parameters[-1], 'lr': 0.1}], lr=LR)
+        # optimizer = torch.optim.Adam(parameters, lr=LR)
+        optimizer = torch.optim.Adam([
+            {'params': parameters[:-1]},
+            {'params': parameters[-1], 'lr': 1}], lr=LR)
         for j in tqdm.tqdm(range(num_iter)):
             optimizer.zero_grad()
             closure()

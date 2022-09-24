@@ -75,7 +75,7 @@ else:
     OPT_OVER = 'net'
 
 train_input = True if ',' in OPT_OVER else False
-reg_noise_std = 0  # 1. / 30.  # set to 1./20. for sigma=50
+reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
 LR = args.learning_rate
 
 OPTIMIZER = 'adam'  # 'LBFGS'
@@ -110,15 +110,15 @@ elif fname in fnames:
 
     representation_scale = 2 if freq_dict['cosine_only'] is True else 4
     input_depth = args.num_freqs * representation_scale
-    # net = get_net(input_depth, 'skip', pad,
-    #               skip_n33d=128,
-    #               skip_n33u=128,
-    #               skip_n11=4,
-    #               num_scales=5,
-    #               upsample_mode='bilinear').type(dtype)
+    net = get_net(input_depth, 'skip', pad,
+                  skip_n33d=128,
+                  skip_n33u=128,
+                  skip_n11=4,
+                  num_scales=5,
+                  upsample_mode='bilinear').type(dtype)
 
     # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
-    net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+    # net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 else:
     assert False
 
@@ -145,11 +145,13 @@ out_avg = None
 last_net = None
 psrn_noisy_last = 0
 psnr_gt_list = []
+best_psnr_gt = -1.0
+best_img = None
 i = 0
 
 
 def closure():
-    global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list
+    global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list, best_img, best_psnr_gt
 
     if INPUT == 'noise':
         if reg_noise_std > 0:
@@ -169,9 +171,6 @@ def closure():
             net_input_ = torch.nn.Dropout(drp_rate)(net_input_) * drp_rate
 
         net_input = generate_fourier_feature_maps(net_input_,  (img_pil.size[1], img_pil.size[0]), dtype)
-        # net_input = generate_fourier_feature_maps(net_input_saved,  (img_pil.size[1], img_pil.size[0]), dtype)
-        # if reg_noise_std > 0:
-        #     net_input = net_input_saved + (noise.normal_() * reg_noise_std)
     else:
         net_input = net_input_saved
 
@@ -186,8 +185,9 @@ def closure():
     total_loss = mse(out, img_noisy_torch)
     total_loss.backward()
 
-    psrn_noisy = compare_psnr(img_noisy_np, out.detach().cpu().numpy()[0])
-    psrn_gt = compare_psnr(img_np, out.detach().cpu().numpy()[0])
+    out_np = out.detach().cpu().numpy()[0]
+    psrn_noisy = compare_psnr(img_noisy_np, out_np)
+    psrn_gt = compare_psnr(img_np, out_np)
     psrn_gt_sm = compare_psnr(img_np, out_avg.detach().cpu().numpy()[0])
 
     # Note that we do not have GT for the "snail" example
@@ -198,7 +198,9 @@ def closure():
         psnr_gt_list.append(psrn_gt)
 
         wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
-
+        if psrn_gt > best_psnr_gt:
+            best_psnr_gt = psrn_gt
+            best_img = np.copy(out_np)
     # Backtracking
     # if i % show_every:
     #     if psrn_noisy - psrn_noisy_last < -5:
@@ -240,7 +242,7 @@ run = wandb.init(project="Fourier features DIP",
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Denoising',
-                 mode='online',
+                 mode='offline',
                  save_code=True,
                  config=log_config,
                  notes='FCN'
@@ -253,6 +255,7 @@ if train_input:
     if INPUT == 'infer_freqs':
         net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
                                                   only_cosine=freq_dict['cosine_only'])
+        log_inputs(net_input)
     else:
         log_inputs(net_input)
 
@@ -267,6 +270,7 @@ else:
 
 out_np = torch_to_np(net(net_input))
 log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')
+log_images(np.array([np.clip(best_img, 0, 1), img_np]), num_iter, task='Best Image', psnr=best_psnr_gt)
 q = plot_image_grid([np.clip(out_np, 0, 1), img_np], factor=13)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))
