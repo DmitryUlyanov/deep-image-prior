@@ -110,7 +110,7 @@ elif fname in fnames:
 else:
     assert False
 
-net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
+net_input = get_input(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
 
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])

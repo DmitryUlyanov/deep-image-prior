@@ -4,12 +4,12 @@ import torchvision
 import sys
 
 import numpy as np
-import rff
 from PIL import Image
 import PIL
 import numpy as np
 import tqdm
 import matplotlib.pyplot as plt
+from utils.freq_utils import *
 
 
 def crop_image(img, d=32):
@@ -29,7 +29,7 @@ def crop_image(img, d=32):
     return img_cropped
 
 
-def get_params(opt_over, net, net_input, downsampler=None):
+def get_params(opt_over, net, net_input, downsampler=None, input_encoder=None):
     '''Returns parameters that we want to optimize over.
 
     Args:
@@ -48,8 +48,11 @@ def get_params(opt_over, net, net_input, downsampler=None):
             assert downsampler is not None
             params = [x for x in downsampler.parameters()]
         elif opt == 'input':
-            net_input.requires_grad = True
-            params += [net_input]
+            if net_input.is_leaf:
+                net_input.requires_grad = True
+                params += [net_input]
+            else:
+                params += [x for x in input_encoder.parameters()]
         else:
             assert False, 'what is it?'
 
@@ -140,7 +143,8 @@ def get_meshgrid(spatial_size):
     return meshgrid
 
 
-def get_noise(input_depth, method, spatial_size, noise_type='u', var=1. / 10, freq_dict=None):
+def get_input(input_depth, method, spatial_size, noise_type='u', var=1. / 10, freq_dict=None, img=None,
+              input_encoder=None):
     """Returns a pytorch.Tensor of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
     initialized in a specific way.
     Args:
@@ -169,27 +173,32 @@ def get_noise(input_depth, method, spatial_size, noise_type='u', var=1. / 10, fr
         elif freq_dict['method'] == 'random':
             meshgrid_np = get_meshgrid(spatial_size)
             meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
-            net_input = positional_encoding(v=meshgrid,
-                                        m=40,
-                                        sigma=10,
-                                        sample_depth=input_depth // 4,
-                                        scale_factor=4).permute(0, 3, 1, 2)
+            freqs = positional_encoding(v=meshgrid,
+                                            m=40,
+                                            sigma=10,
+                                            sample_depth=input_depth // 4,
+                                            scale_factor=4)
+            net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
         elif freq_dict['method'] == 'log':
             freqs = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
             net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
 
     elif method == 'infer_freqs':
+        meshgrid_np = get_meshgrid(spatial_size)
+        meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         if freq_dict['method'] == 'linear':
             net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
         elif freq_dict['method'] == 'random':
-            meshgrid_np = get_meshgrid(spatial_size)
-            meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
             net_input = positional_encoding(v=meshgrid,
                                             m=40,
                                             sigma=10,
-                                            sample_depth=input_depth // 4).permute(0, 3, 1, 2)
+                                            sample_depth=input_depth // 4)
         elif freq_dict['method'] == 'log':
             net_input = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
+        elif freq_dict['method'] == 'learn2':
+            net_input = meshgrid.float()
+        elif freq_dict['method'] == 'wt':
+            analyze_image(img.cpu().numpy(), size=64)
             # net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
             # if freq_dict['cosine_only']:
             #     assert input_depth == 2 * list(net_input.shape)[0]
@@ -277,10 +286,10 @@ def optimize(optimizer_type, parameters, closure, LR, num_iter):
 
     elif optimizer_type == 'adam':
         print('Starting optimization with ADAM')
-        # optimizer = torch.optim.Adam(parameters, lr=LR)
-        optimizer = torch.optim.Adam([
-            {'params': parameters[:-1]},
-            {'params': parameters[-1], 'lr': 1}], lr=LR)
+        optimizer = torch.optim.Adam(parameters, lr=LR)
+        # optimizer = torch.optim.Adam([
+        #     {'params': parameters[:-1]},
+        #     {'params': parameters[-1], 'lr': 100*LR}], lr=LR)
         for j in tqdm.tqdm(range(num_iter)):
             optimizer.zero_grad()
             closure()
@@ -369,6 +378,71 @@ def positional_encoding(m, sigma, v, sample_depth=0, scale_factor=1):
         coeffs = 2 * np.pi * sigma ** (j / m)
 
     coeffs = coeffs * scale_factor
-    vp = coeffs * torch.unsqueeze(v, -1)
-    vp_cat = torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1)
-    return vp_cat.flatten(-2, -1)
+
+    return coeffs
+
+
+# https://github.com/willGuimont/learnable_fourier_positional_encoding/blob/master/learnable_fourier_pos_encoding.py
+class LearnableFourierPositionalEncoding(nn.Module):
+    def __init__(self, C: int, M: tuple, F_dim: int, H_dim: int, D: int, gamma: float):
+        """
+        Learnable Fourier Features from https://arxiv.org/pdf/2106.02795.pdf (Algorithm 1)
+        Implementation of Algorithm 1: Compute the Fourier feature positional encoding of a multi-dimensional position
+        Computes the positional encoding of a tensor of shape [N, G, M]
+        :param G: positional groups (positions in different groups are independent)
+        :param M: each point has a M-dimensional positional values
+        :param F_dim: depth of the Fourier feature dimension
+        :param H_dim: hidden layer dimension
+        :param D: positional encoding dimension
+        :param gamma: parameter to initialize Wr
+        """
+        super().__init__()
+        self.C = C
+        self.M = M
+        self.F_dim = F_dim
+        self.H_dim = H_dim
+        self.D = D
+        self.gamma = gamma
+
+        # Projection matrix on learned lines (used in eq. 2)
+        self.Wr = nn.Linear(self.C, self.F_dim // 2, bias=False)
+        # MLP (GeLU(F @ W1 + B1) @ W2 + B2 (eq. 6)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.F_dim, self.H_dim, bias=True),
+            nn.GELU(),
+            # nn.Linear(self.H_dim, self.D // self.C)
+            nn.Linear(self.H_dim, self.D)
+        )
+
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.normal_(self.Wr.weight.data, mean=0, std=self.gamma ** -2)
+
+    def forward(self, x):
+        """
+        Produce positional encodings from x
+        :param x: tensor of shape [N, G, M] that represents N positions where each position is in the shape of [G, M],
+                  where G is the positional group and each group has M-dimensional positional values.
+                  Positions in different positional groups are independent
+        :return: positional encoding for X
+        """
+        B, X, Y, C = x.shape
+        # Step 1. Compute Fourier features (eq. 2)
+        projected = self.Wr(x.view(-1, C))
+        cosines = torch.cos(projected)
+        sines = torch.sin(projected)
+        F = 1 / np.sqrt(self.F_dim) * torch.cat([cosines, sines], dim=-1)
+        # Step 2. Compute projected Fourier features (eq. 6)
+        Y = self.mlp(F)
+        # Step 3. Reshape to x's shape
+        PEx = Y.reshape((B, self.D, *self.M))
+        return PEx
+
+
+# G = 2
+# M = (512, 512)
+# x = torch.from_numpy(get_meshgrid((512, 512))).unsqueeze(0).float()
+# enc = LearnableFourierPositionalEncoding(G, M, 32, 32, 32, 10)
+# pex = enc(x)
+# print(pex.shape)

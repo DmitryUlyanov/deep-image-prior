@@ -31,6 +31,15 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
+parser.add_argument('--freq1', default=1.0, type=float)
+parser.add_argument('--freq2', default=2.2080, type=float)
+parser.add_argument('--freq3', default=4.8753, type=float)
+parser.add_argument('--freq4', default=10.7646, type=float)
+parser.add_argument('--freq5', default=23.7682, type=float)
+parser.add_argument('--freq6', default=52.4802, type=float)
+parser.add_argument('--freq7', default=115.8762, type=float)
+parser.add_argument('--freq8', default=255.8547, type=float)
+
 args = parser.parse_args()
 
 
@@ -101,7 +110,7 @@ elif fname in fnames:
     num_iter = 8000
     figsize = 4
     freq_dict = {
-        'method': 'log',
+        'method': 'random',
         'cosine_only': False,
         'n_freqs': args.num_freqs,
         'base': 2 ** (8 / (args.num_freqs-1)),
@@ -122,10 +131,10 @@ elif fname in fnames:
 else:
     assert False
 
-enc = LearnableFourierPositionalEncoding(2, (img_pil.size[1], img_pil.size[0]), 256, 128, input_depth, 10).type(dtype)
-net_input = get_input(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict,
-                      input_encoder=enc).type(dtype)
+# net_input = get_noise(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
 
+net_input = torch.Tensor(
+    [args.freq1, args.freq2, args.freq3, args.freq4, args.freq5, args.freq6, args.freq7, args.freq8]).type(dtype)
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])
 print('Number of params: %d' % s)
@@ -134,13 +143,14 @@ print('Number of params: %d' % s)
 mse = torch.nn.MSELoss().type(dtype)
 
 img_noisy_torch = np_to_torch(img_noisy_np).type(dtype)
-# analyze_image(img_noisy_torch, size=64)
 if train_input:
     net_input_saved = net_input
 else:
     net_input_saved = net_input.detach().clone()
 
 noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
+# if INPUT == 'fourier':
+#     indices = sample_indices(input_depth, net_input_saved)
 
 out_avg = None
 last_net = None
@@ -168,11 +178,11 @@ def closure():
             net_input_ = net_input_saved + (noise.normal_() * reg_noise_std)
         else:
             net_input_ = net_input_saved
+        if freq_dict['dropout']:
+            drp_rate = 0.5
+            net_input_ = torch.nn.Dropout(drp_rate)(net_input_) * drp_rate
 
-        if freq_dict['method'] == 'learn2':
-            net_input = enc(net_input_)
-        else:
-            net_input = generate_fourier_feature_maps(net_input_,  (img_pil.size[1], img_pil.size[0]), dtype)
+        net_input = generate_fourier_feature_maps(net_input_,  (img_pil.size[1], img_pil.size[0]), dtype)
     else:
         net_input = net_input_saved
 
@@ -199,23 +209,23 @@ def closure():
             i, total_loss.item(), psrn_noisy, psrn_gt, psrn_gt_sm))
         psnr_gt_list.append(psrn_gt)
 
-        wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy, 'psnr_gt_smooth': psrn_gt_sm}, commit=False)
+        wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
         if psrn_gt > best_psnr_gt:
             best_psnr_gt = psrn_gt
             best_img = np.copy(out_np)
             best_iter = i
     # Backtracking
-    if i % show_every:
-        if psrn_noisy - psrn_noisy_last < -2:
-            print('Falling back to previous checkpoint.')
-
-            for new_param, net_param in zip(last_net, net.parameters()):
-                net_param.data.copy_(new_param.cuda())
-
-            return total_loss * 0
-        else:
-            last_net = [x.detach().cpu() for x in net.parameters()]
-            psrn_noisy_last = psrn_noisy
+    # if i % show_every:
+    #     if psrn_noisy - psrn_noisy_last < -5:
+    #         print('Falling back to previous checkpoint.')
+    #
+    #         for new_param, net_param in zip(last_net, net.parameters()):
+    #             net_param.data.copy_(new_param.cuda())
+    #
+    #         return total_loss * 0
+    #     else:
+    #         last_net = [x.detach().cpu() for x in net.parameters()]
+    #         psrn_noisy_last = psrn_noisy
 
     i += 1
 
@@ -241,7 +251,7 @@ log_config.update(**freq_dict)
 filename = os.path.basename(fname).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method']],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Denoising',
@@ -253,25 +263,20 @@ run = wandb.init(project="Fourier features DIP",
 
 # wandb.run.log_code(".")
 print(net)
-p = get_params(OPT_OVER, net, net_input, input_encoder=enc)
+print('Current frequencies: {}'.format(net_input))
+p = get_params(OPT_OVER, net, net_input)
 if train_input:
     if INPUT == 'infer_freqs':
-        if freq_dict['method'] == 'learn2':
-            net_input = enc(net_input_saved)
-        else:
-            net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
-                                                      only_cosine=freq_dict['cosine_only'])
+        net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
+                                                  only_cosine=freq_dict['cosine_only'])
         log_inputs(net_input)
     else:
         log_inputs(net_input)
 
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 if INPUT == 'infer_freqs':
-    if freq_dict['method'] == 'learn2':
-        net_input = enc(net_input_saved)
-    else:
-        net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
-                                                  only_cosine=freq_dict['cosine_only'])
+    net_input = generate_fourier_feature_maps(net_input_saved, (img_pil.size[1], img_pil.size[0]), dtype,
+                                              only_cosine=freq_dict['cosine_only'])
     if train_input:
         log_inputs(net_input)
 else:

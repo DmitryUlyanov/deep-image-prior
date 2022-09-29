@@ -121,7 +121,7 @@ elif 'kate' in f:
 mse = torch.nn.MSELoss().type(dtype)
 img_var = np_to_torch(img_np).type(dtype)
 
-net_input = get_noise(input_depth, INPUT, img_np.shape[1:],
+net_input = get_input(input_depth, INPUT, img_np.shape[1:],
                       freq_dict=freq_dict).type(dtype).detach()
 
 

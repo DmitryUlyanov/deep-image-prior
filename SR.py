@@ -83,7 +83,6 @@ representation_scale = 2 if freq_dict['cosine_only'] is True else 4
 input_depth = args.num_freqs * representation_scale
 if factor == 4:
     num_iter = 10000
-    # reg_noise_std = 0.03
     reg_noise_std = args.reg_noise_std
 elif factor == 8:
     num_iter = 4000
@@ -91,20 +90,20 @@ elif factor == 8:
 else:
     assert False, 'We did not experiment with other factors'
 
-net_input = get_noise(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
+net_input = get_input(input_depth, INPUT, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
                       freq_dict=freq_dict).type(dtype)
-# net_input = torch.Tensor([torch.Tensor([0]), * list(2 ** torch.linspace(0, freq_dict['n_freqs']-2, freq_dict['n_freqs']-1))]).type(dtype) / (factor // 2)
 print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
 NET_TYPE = 'skip'  # UNet, ResNet
-# net = get_net(input_depth, 'skip', pad,
-#               skip_n33d=128,
-#               skip_n33u=128,
-#               skip_n11=4,
-#               num_scales=5,
-#               upsample_mode='bilinear').type(dtype)
-# net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
-net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+net = get_net(input_depth, 'skip', pad,
+              skip_n33d=128,
+              skip_n33u=128,
+              skip_n11=4,
+              num_scales=5,
+              upsample_mode='bilinear').type(dtype)
+# net = MLP(input_depth, out_dim=3, hidden_list=[256 for _ in range(8)]).type(dtype)
+# net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+
 # Losses
 mse = torch.nn.MSELoss().type(dtype)
 
@@ -114,7 +113,7 @@ downsampler = Downsampler(n_planes=3, factor=factor, kernel_type=KERNEL_TYPE, ph
 
 
 def closure():
-    global i, net_input, last_net, psnr_LR_last, LR, reduce_lr, best_img, best_psnr_hr
+    global i, net_input, last_net, psnr_LR_last, LR, reduce_lr, best_img, best_psnr_hr, best_iter
 
     if INPUT == 'noise':
         if reg_noise_std > 0:
@@ -122,7 +121,6 @@ def closure():
         else:
             net_input = net_input_saved
     elif INPUT == 'fourier':
-        # net_input = net_input_saved[:, indices, :, :]
         net_input = net_input_saved
     elif INPUT == 'infer_freqs':
         if reg_noise_std > 0:
@@ -149,19 +147,19 @@ def closure():
     psnr_HR = compare_psnr(imgs['HR_np'], torch_to_np(out_HR))
 
     # Backtracking
-    # if psnr_LR - psnr_LR_last < -5:
-    #     print('Falling back to previous checkpoint.')
-    #     if reduce_lr:
-    #         LR *= 0.1
-    #     for new_param, net_param in zip(last_net, net.parameters()):
-    #         net_param.data.copy_(new_param.cuda())
-    #
-    #     reduce_lr = False
-    #     return total_loss * 0
-    # else:
-    #     reduce_lr = True
-    #     last_net = [x.detach().cpu() for x in net.parameters()]
-    #     psnr_LR_last = psnr_LR
+    if psnr_LR - psnr_LR_last < -5:
+        print('Falling back to previous checkpoint.')
+        if reduce_lr:
+            LR *= 0.1
+        for new_param, net_param in zip(last_net, net.parameters()):
+            net_param.data.copy_(new_param.cuda())
+
+        reduce_lr = False
+        return total_loss * 0
+    else:
+        reduce_lr = True
+        last_net = [x.detach().cpu() for x in net.parameters()]
+        psnr_LR_last = psnr_LR
 
     # History
     psnr_history.append([psnr_LR, psnr_HR])
@@ -174,6 +172,7 @@ def closure():
         if psnr_HR > best_psnr_hr:
             best_psnr_hr = psnr_HR
             best_img = np.copy(out_HR_np)
+            best_iter = i
     i += 1
 
     # Log metrics
@@ -200,15 +199,15 @@ log_config.update(**freq_dict)
 filename = os.path.basename(path_to_image).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, 'FCN'],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method']],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Super-Resolution',
                  mode='online',
                  save_code=True,
                  config=log_config,
-                 notes='Input type {} - {} random projected to depth {}'.format(
-                     INPUT, freq_dict['n_freqs'], input_depth))
+                 notes=''
+                 )
 
 # wandb.run.log_code(".")
 
@@ -219,14 +218,13 @@ else:
     net_input_saved = net_input.detach().clone()
 
 noise = torch.rand_like(net_input) if INPUT == 'infer_freqs' else net_input.detach().clone()
-# if INPUT == 'fourier':
-#     # indices = sample_indices(input_depth, net_input_saved)
 
 last_net = None
 psnr_LR_last = 0
 reduce_lr = True
 best_psnr_hr = -1.0
 best_img = None
+best_iter = 0
 print(net)
 i = 0
 p = get_params(OPT_OVER, net, net_input)
@@ -238,7 +236,6 @@ if train_input:
     else:
         log_inputs(net_input)
 
-# wandb.watch(net, log='all', log_freq=show_every)
 optimize(OPTIMIZER, p, closure, LR, num_iter)
 if INPUT == 'infer_freqs':
     net_input = generate_fourier_feature_maps(net_input_saved, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]), dtype,
@@ -257,7 +254,7 @@ plot_image_grid([imgs['HR_np'],
                  out_HR_np], factor=4, nrow=1)
 
 log_images(np.array([np.clip(out_HR_np, 0, 1), imgs['HR_np']]), num_iter, task='Super-Resolution')
-log_images(np.array([np.clip(best_img, 0, 1), imgs['HR_np']]), num_iter, task='Best Image', psnr=best_psnr_hr)
+log_images(np.array([np.clip(best_img, 0, 1), imgs['HR_np']]), best_iter, task='Best Image', psnr=best_psnr_hr)
 fig, axes = plt.subplots(1, 2)
 axes[0].plot([h[0] for h in psnr_history])
 axes[0].set_title('LR PSNR\nmax: {:.3f}'.format(max([h[0] for h in psnr_history])))

@@ -1,5 +1,6 @@
 import torch
-from torch.fft import *
+from torch.fft import fftshift, rfft2
+import pywt
 import matplotlib.pyplot as plt
 
 
@@ -29,3 +30,19 @@ def visualize_learned_frequencies(learned_frequencies):
     import wandb
     [wandb.log({'learned Frequency #{}'.format(i): learned_frequencies[i]}, commit=False)
      for i in range(learned_frequencies.shape[0])]
+
+
+def analyze_image(img_torch, size):
+    w = pywt.Wavelet('db3')
+    size = size  # patch size
+    stride = size  # patch stride
+
+    patches = img_torch.unfold(2, size, stride).unfold(3, size, stride).cpu()
+    wt_list_cols = []
+    for ver_idx in range(patches.shape[2]):
+        wt_list_rows = []
+        for hor_idx in range(patches.shape[3]):
+            current_patch = patches[0, :, ver_idx, hor_idx, :, :]
+            wt_list_rows.append(pywt.swt2(current_patch.numpy(), w, level=2))
+        wt_list_cols.append(wt_list_rows)
+    pass
