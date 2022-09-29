@@ -143,8 +143,7 @@ def get_meshgrid(spatial_size):
     return meshgrid
 
 
-def get_input(input_depth, method, spatial_size, noise_type='u', var=1. / 10, freq_dict=None, img=None,
-              input_encoder=None):
+def get_input(input_depth, method, spatial_size, noise_type='u', var=1. / 10, freq_dict=None, img=None):
     """Returns a pytorch.Tensor of size (1 x `input_depth` x `spatial_size[0]` x `spatial_size[1]`) 
     initialized in a specific way.
     Args:
