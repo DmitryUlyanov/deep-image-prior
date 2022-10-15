@@ -64,7 +64,7 @@ OPTIMIZER = 'adam'  # 'LBFGS'
 show_every = 100
 exp_weight = 0.99
 
-num_iter = 100
+num_iter = 1000
 figsize = 4
 
 if INPUT == 'noise':
@@ -195,7 +195,7 @@ run = wandb.init(project="Fourier features DIP",
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='{}_{}'.format(INPUT, LR),
                  group='Denoising - Video',
-                 mode='offline',
+                 mode='online',
                  save_code=True,
                  config=log_config,
                  notes='Baseline'
