@@ -122,3 +122,24 @@ def conv(in_f, out_f, kernel_size, stride=1, bias=True, pad='zero', downsample_m
 
     layers = filter(lambda x: x is not None, [padder, convolver, downsampler])
     return nn.Sequential(*layers)
+
+
+class PrintLayer(nn.Module):
+    def __init__(self):
+        super(PrintLayer, self).__init__()
+
+    def forward(self, x):
+        print(x.shape)
+        return x
+
+
+class AvgPool3D(nn.Module):
+    def __init__(self):
+        super(AvgPool3D, self).__init__()
+        self.avg_pool3d = nn.AvgPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
+
+    def forward(self, x):
+        if x.shape[2] > 1:
+            x = self.avg_pool3d(x)
+
+        return x
