@@ -68,12 +68,12 @@ def skip_3d_mlp(
             skip.add(bn_skip)
             skip.add(act(act_fun))
 
-        conv_down = conv3d(input_depth, num_channels_down[i], filter_size_down[i], stride=(1, 2, 2), bias=need_bias,
+        conv_down = conv3d(input_depth, num_channels_down[i], filter_size_down[i], stride=(2, 2, 2), bias=need_bias,
                            pad=pad, downsample_mode=downsample_mode[i])
         bn_down = BatchNorm3D(num_channels_down[i])
         deeper.add(conv_down)
         # deeper.add(PrintLayer())
-        deeper.add(AvgPool3D())
+        # deeper.add(AvgPool3D())
         deeper.add(bn_down)
         deeper.add(act(act_fun))
 

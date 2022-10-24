@@ -3,7 +3,7 @@ import numpy as np
 from utils.common_utils import np_cvt_color
 
 
-def log_images(array_of_imgs, iter, task, psnr=None):
+def log_images(array_of_imgs, iter, task, psnr=None, commit=True):
     B, C, H, W = array_of_imgs.shape
     images_np = np.zeros((H, B * W, C), dtype=np.float32)
     for i in range(B):
@@ -13,7 +13,7 @@ def log_images(array_of_imgs, iter, task, psnr=None):
         caption = 'Iteration #{}\n PSNR: {}'.format(iter, psnr)
     else:
         caption = 'Iteration #{}'.format(iter)
-    wandb.log({task: wandb.Image(images_np, caption=caption)})
+    wandb.log({task: wandb.Image(images_np, caption=caption)}, commit=commit)
 
 
 def log_input_images(degraded_img, gt_img):

@@ -33,8 +33,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', default='0')
 parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
+parser.add_argument('--dataset_index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
+parser.add_argument('--freq_lim', default=8, type=int)
+parser.add_argument('--freq_th', default=20, type=int)
 args = parser.parse_args()
 
 
@@ -44,12 +47,19 @@ PLOT = True
 sigma = 25
 sigma_ = sigma/255.
 
-if args.index != -1:
-    fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png', 'data/sr/zebra_GT.png']
-    fnames_list = [fnames[args.index]]
-else:
+if args.index == -1:
     fnames_list = sorted(glob.glob('data/denoising_dataset/*.*'))
     fnames = fnames_list
+    if args.dataset_index != -1:
+        fnames_list = fnames_list[args.dataset_index:args.dataset_index + 1]
+elif args.index == -2:
+    k = 8
+    fnames_list = sorted(glob.glob('../IL_video_inpainting/data/rollerblade_imgs/*.png'))
+    fnames = np.random.choice(fnames_list, 8)
+else:
+    fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png',
+              'data/sr/zebra_GT.png']
+    fnames_list = [fnames[args.index]]
 
 for fname in fnames_list:
     if fname == 'data/denoising/snail.jpg':
@@ -83,13 +93,14 @@ for fname in fnames_list:
         OPT_OVER = 'net'
 
     train_input = True if ',' in OPT_OVER else False
-    reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
+    reg_noise_std = 0  # 1. / 30.  # set to 1./20. for sigma=50
     LR = args.learning_rate
 
     OPTIMIZER = 'adam'  # 'LBFGS'
     show_every = 100
     exp_weight = 0.99
 
+    img_noisy_torch = np_to_torch(img_noisy_np).type(dtype)
     if fname == 'data/denoising/snail.jpg':
         num_iter = 2400
         input_depth = 3
@@ -106,13 +117,23 @@ for fname in fnames_list:
         net = net.type(dtype)
 
     elif fname in fnames:
+        # img_f = rfft2(img_noisy_torch, norm='ortho')
+        # mag_img_f = torch.abs(img_f).cpu()
+        # bins = torch.Tensor([torch.Tensor([0]), *list(2 ** torch.linspace(0, args.freq_lim - 1, args.num_freqs))])
+        # hist = torch.histogram(mag_img_f, bins=bins)
+        # if hist.hist[-4:].sum() > args.freq_th:
+        #     adapt_lim = 8
+        # else:
+        #     adapt_lim = 7
+        adapt_lim = args.freq_lim
+
         num_iter = 1801
         figsize = 4
         freq_dict = {
             'method': 'log',
             'cosine_only': False,
             'n_freqs': args.num_freqs,
-            'base': 2 ** (8 / (args.num_freqs-1)),
+            'base': 2 ** (adapt_lim / (args.num_freqs-1)),
         }
 
         input_depth = args.num_freqs * 4
@@ -123,8 +144,8 @@ for fname in fnames_list:
                       num_scales=5,
                       upsample_mode='bilinear').type(dtype)
 
-        # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
-        # net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+        # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
+        # net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
     else:
         assert False
 
@@ -138,8 +159,6 @@ for fname in fnames_list:
     # Loss
     mse = torch.nn.MSELoss().type(dtype)
 
-    img_noisy_torch = np_to_torch(img_noisy_np).type(dtype)
-    # analyze_image(img_noisy_torch, size=64)
     if train_input:
         net_input_saved = net_input
     else:
@@ -166,7 +185,6 @@ for fname in fnames_list:
             else:
                 net_input = net_input_saved
         elif INPUT == 'fourier':
-            # net_input = net_input_saved[:, indices, :, :]
             net_input = net_input_saved
         elif INPUT == 'infer_freqs':
             if reg_noise_std > 0:
@@ -212,17 +230,17 @@ for fname in fnames_list:
                 best_img = np.copy(out_np)
                 best_iter = i
         # Backtracking
-        if i % show_every:
-            if psrn_noisy - psrn_noisy_last < -2:
-                print('Falling back to previous checkpoint.')
-
-                for new_param, net_param in zip(last_net, net.parameters()):
-                    net_param.data.copy_(new_param.cuda())
-
-                return total_loss * 0
-            else:
-                last_net = [x.detach().cpu() for x in net.parameters()]
-                psrn_noisy_last = psrn_noisy
+        # if i % show_every:
+        #     if psrn_noisy - psrn_noisy_last < -2:
+        #         print('Falling back to previous checkpoint.')
+        #
+        #         for new_param, net_param in zip(last_net, net.parameters()):
+        #             net_param.data.copy_(new_param.cuda())
+        #
+        #         return total_loss * 0
+        #     else:
+        #         last_net = [x.detach().cpu() for x in net.parameters()]
+        #         psrn_noisy_last = psrn_noisy
 
         i += 1
 
@@ -241,16 +259,17 @@ for fname in fnames_list:
         'input depth': input_depth,
         'input type': INPUT,
         'Train input': train_input,
-        'Reg. Noise STD': reg_noise_std
+        'Reg. Noise STD': reg_noise_std,
+        # 'Adapt Lim': adapt_lim
     }
     log_config.update(**freq_dict)
     filename = os.path.basename(fname).split('.')[0]
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                           'dataset_comp', 'Conv3x3'],
+                           'dataset_comp', 'denoising', 'FCN'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='{}_{}'.format(INPUT, LR),
+                     job_type='SimpleCNN_no_reg_noise_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
                      group='Denoising - Dataset',
                      mode='online',
                      save_code=True,
@@ -291,6 +310,7 @@ for fname in fnames_list:
     log_images(np.array([np.clip(out_np, 0, 1)]), num_iter, task='Denoising')
     log_images(np.array([np.clip(best_img, 0, 1)]), best_iter, task='Best Image', psnr=best_psnr_gt)
     wandb.log({'PSNR-Y': compare_psnr_y(img_np, out_np)}, commit=True)
+    wandb.log({'PSNR-center': compare_psnr(img_np[:, 5:-5, 5:-5], out_np[:, 5:-5, 5:-5])}, commit=True)
     q = plot_image_grid([np.clip(out_np, 0, 1), img_np], factor=13)
     plt.plot(psnr_gt_list)
     plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))

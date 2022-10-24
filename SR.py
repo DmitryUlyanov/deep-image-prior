@@ -26,7 +26,9 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=1, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
+parser.add_argument('--freq_lim', default=8, type=int)
 parser.add_argument('--reg_noise_std', default=0.03, type=float)
+parser.add_argument('--dataset_index', default=0, type=int)
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -48,9 +50,11 @@ if args.index != -1:
     fnames_list = [fnames[args.index]]
     dataset_tag = 'single_img'
 else:
-    dataset_path = 'data/sr_datasets/Set5/images'
+    dataset_path = 'data/sr_datasets/Set14/images'
     fnames_list = sorted(glob.glob(dataset_path + '/*.*'))
     fnames = fnames_list
+    if args.dataset_index != -1:
+        fnames_list = fnames_list[args.dataset_index:args.dataset_index+1]
     dataset_tag = dataset_path.split('/')[-2]
 
 # Starts here
@@ -81,7 +85,7 @@ for path_to_image in fnames_list:
         'method': 'log',
         'cosine_only': False,
         'n_freqs': args.num_freqs,
-        'base': 2 ** (8 / (args.num_freqs - 1))
+        'base': 2 ** (args.freq_lim / (args.num_freqs - 1))
     }
 
     input_depth = args.num_freqs * 4
@@ -89,7 +93,7 @@ for path_to_image in fnames_list:
         num_iter = 2001
         reg_noise_std = args.reg_noise_std
     elif factor == 8:
-        num_iter = 4000
+        num_iter = 4001
         reg_noise_std = 0.05
     else:
         assert False, 'We did not experiment with other factors'
@@ -99,14 +103,14 @@ for path_to_image in fnames_list:
     print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
     NET_TYPE = 'skip'  # UNet, ResNet
-    net = get_net(input_depth, 'skip', pad, n_channels=output_depth,
-                  skip_n33d=128,
-                  skip_n33u=128,
-                  skip_n11=4,
-                  num_scales=5,
-                  upsample_mode='bilinear').type(dtype)
-    # net = MLP(input_depth, out_dim=3, hidden_list=[256 for _ in range(8)]).type(dtype)
-    # net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
+    # net = get_net(input_depth, 'skip', pad, n_channels=output_depth,
+    #               skip_n33d=128,
+    #               skip_n33u=128,
+    #               skip_n11=4,
+    #               num_scales=5,
+    #               upsample_mode='bilinear').type(dtype)
+    # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
+    net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
 
     # Losses
     mse = torch.nn.MSELoss().type(dtype)
@@ -153,19 +157,19 @@ for path_to_image in fnames_list:
         psnr_HR = compare_psnr(imgs['HR_np'], torch_to_np(out_HR))
 
         # Backtracking
-        if psnr_LR - psnr_LR_last < -5:
-            print('Falling back to previous checkpoint.')
-            if reduce_lr:
-                LR *= 0.1
-            for new_param, net_param in zip(last_net, net.parameters()):
-                net_param.data.copy_(new_param.cuda())
-
-            reduce_lr = False
-            return total_loss * 0
-        else:
-            reduce_lr = True
-            last_net = [x.detach().cpu() for x in net.parameters()]
-            psnr_LR_last = psnr_LR
+        # if psnr_LR - psnr_LR_last < -5:
+        #     print('Falling back to previous checkpoint.')
+        #     if reduce_lr:
+        #         LR *= 0.1
+        #     for new_param, net_param in zip(last_net, net.parameters()):
+        #         net_param.data.copy_(new_param.cuda())
+        #
+        #     reduce_lr = False
+        #     return total_loss * 0
+        # else:
+        #     reduce_lr = True
+        #     last_net = [x.detach().cpu() for x in net.parameters()]
+        #     psnr_LR_last = psnr_LR
 
         # History
         psnr_history.append([psnr_LR, psnr_HR])
@@ -213,14 +217,15 @@ for path_to_image in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                           'denoising_dataset', dataset_tag, 'Conv3x3'],
+                            dataset_tag, 'freq_lim: {}'.format(args.freq_lim), 'sr', 'FCN'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='{}_{}_{}'.format(dataset_tag, INPUT, LR),
+                     job_type='SimpleCNN_{}_{}_{}_freq_lim_{}_num_freqs_{}'.format(dataset_tag, INPUT, LR, args.freq_lim,
+                                                                                 args.num_freqs),
                      group='Super-Resolution - Dataset x{}'.format(factor),
                      mode='online',
                      save_code=True,
                      config=log_config,
-                     notes='Baseline'
+                     notes=''
                      )
 
     wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)

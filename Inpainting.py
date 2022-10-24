@@ -90,28 +90,28 @@ pad = 'reflection'  # 'zero'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
-    # INPUT = 'meshgrid' # 'infer_freqs'
-    input_depth = args.num_freqs * 4
+    INPUT = 'meshgrid' # 'infer_freqs'
+    input_depth = 2  # args.num_freqs * 4
     LR = args.learning_rate
-    num_iter = 8001
+    num_iter = 5001
     param_noise = False
     show_every = 50
     figsize = 5
     reg_noise_std = 0.03
 
     net = skip(input_depth, img_np.shape[0],
-               # num_channels_down=[128] * 5,
-               # num_channels_up=[128] * 5,
-               # num_channels_skip=[0] * 5,
-               # upsample_mode='nearest', filter_skip_size=1, filter_size_up=1, filter_size_down=1,
-               # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
-               num_channels_down=[256] * 5,
-               num_channels_up=[256] * 5,
-               num_channels_skip=[128] * 5,
-               filter_size_up=1, filter_size_down=1, filter_skip_size=1,
-               upsample_mode='nearest',  # downsample_mode='avg',
-               need1x1_up=True,
+               num_channels_down=[128] * 5,
+               num_channels_up=[128] * 5,
+               num_channels_skip=[0] * 5,
+               upsample_mode='nearest', filter_skip_size=1, filter_size_up=3, filter_size_down=3,
                need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+               # num_channels_down=[256] * 5,
+               # num_channels_up=[256] * 5,
+               # num_channels_skip=[128] * 5,
+               # filter_size_up=1, filter_size_down=1, filter_skip_size=1,
+               # upsample_mode='nearest',  # downsample_mode='avg',
+               # need1x1_up=True,
+               # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
     # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
@@ -138,29 +138,33 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
 elif 'library.png' in img_path:
-    # INPUT = 'fourier'  # 'noise'  # 'infer_freqs'
-    input_depth = args.num_freqs * 4
+    INPUT = 'noise'  # 'infer_freqs'
+    input_depth = 32
 
-    num_iter = 8001
+    num_iter = 5001
     show_every = 50
     figsize = 8
-    reg_noise_std = 0.03
+    reg_noise_std = 0.00
     param_noise = True
 
     if 'skip' in NET_TYPE:
 
         depth = int(NET_TYPE[-1])
         net = skip(input_depth, img_np.shape[0],
-                   # num_channels_down=[16, 32, 64, 128, 128, 128][:depth],
-                   # num_channels_up=[16, 32, 64, 128, 128, 128][:depth],
-                   # num_channels_skip=[0, 0, 0, 0, 0, 0][:depth],
-                   num_channels_down=[256] * 5,
-                   num_channels_up=[256] * 5,
-                   num_channels_skip=[128] * 5,
-                   filter_size_up=1, filter_size_down=1, filter_skip_size=1,
-                   upsample_mode='nearest',  #downsample_mode='avg',
-                   need1x1_up=True,
+                   num_channels_down=[16, 32, 64, 128, 128, 128][:depth],
+                   num_channels_up=[16, 32, 64, 128, 128, 128][:depth],
+                   num_channels_skip=[0, 0, 0, 0, 0, 0][:depth],
+                   filter_size_up=3, filter_size_down=5, filter_skip_size=1,
+                   upsample_mode='nearest',  # downsample_mode='avg',
+                   need1x1_up=False,
                    need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+                   # num_channels_down=[256] * 5,
+                   # num_channels_up=[256] * 5,
+                   # num_channels_skip=[128] * 5,
+                   # filter_size_up=1, filter_size_down=1, filter_skip_size=1,
+                   # upsample_mode='nearest',  #downsample_mode='avg',
+                   # need1x1_up=True,
+                   # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
         LR = args.learning_rate
 
@@ -294,8 +298,8 @@ log_config.update(**freq_dict)
 filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'], '1x1'],
-                 name='{}_depth_{}_{}_1x1'.format(filename, input_depth, '{}'.format(INPUT)),
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'], 'baseline'],
+                 name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
                  job_type='train',
                  group='Inpainting',
                  mode='online',

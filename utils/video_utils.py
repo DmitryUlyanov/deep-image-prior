@@ -75,7 +75,7 @@ class VideoDataset:
             'n_freqs': num_freqs,
             'base': 2 ** (8 / (num_freqs - 1)),
         }
-        self.input_depth = 32 if input_type == 'noise' else num_freqs * 4
+        self.input_depth = 1 if input_type == 'noise' else num_freqs * 4
 
         self.init_batch_list()
         self.init_input()
@@ -101,6 +101,9 @@ class VideoDataset:
             self.batch_list = self.batch_list[1:]
             return self.get_batch_data(batch_idx, batch_stride)
 
+    def get_batch_size(self):
+        return self.batch_size
+
     def get_batch_data(self, batch_idx=0, batch_stride=1):
         """
         Collect batch data for certain batch
@@ -123,11 +126,11 @@ class VideoDataset:
         return batch_data
 
     def add_sequence_positional_encoding(self):
-        freqs = self.freq_dict['base'] ** torch.linspace(0., self.freq_dict['n_freqs'] - 1,
-                                                         steps=self.freq_dict['n_freqs'])
+        freqs = self.freq_dict['base'] ** torch.linspace(0., self.freq_dict['n_freqs'],
+                                                         steps=self.freq_dict['n_freqs'] * 2)
         spatial_size = self.input.shape[-2:]
-        vp = freqs.unsqueeze(1).repeat(1, self.n_frames) * torch.arange(1, self.n_frames+1)
-        vp = vp.T.view(self.n_frames, self.freq_dict['n_freqs'], 1, 1).repeat(1, 1, *spatial_size)
+        vp = freqs.unsqueeze(1).repeat(1, self.n_frames) * torch.arange(1, self.n_frames+1) / self.n_frames  # FF X frames
+        vp = vp.T.view(self.n_frames, self.freq_dict['n_freqs'] * 2, 1, 1).repeat(1, 1, *spatial_size)
         time_pe = torch.cat((torch.cos(vp), torch.sin(vp)), dim=1)
         self.input = torch.cat([self.input, time_pe], dim=1)
 
