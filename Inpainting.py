@@ -2,7 +2,7 @@ from __future__ import print_function
 
 from utils.inpainting_utils import *
 from utils.wandb_utils import *
-from models import PENet
+import glob
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -34,6 +34,7 @@ parser.add_argument('--index', default=0, type=int)
 parser.add_argument('--input_index', default=0, type=int)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
+parser.add_argument('--dataset_index', default=0, type=int)
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -58,14 +59,24 @@ img_dict = {
     3: {
         'img_path': 'data/inpainting/peppers.png',
         'mask_path': 'data/inpainting/peppers_mask.png'
-
     }
 }
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
-img_path = img_dict[args.index]['img_path']
-mask_path = img_dict[args.index]['mask_path']
+if args.index == -1:
+    # fnames = sorted(glob.glob('data/inpainting_scribble_dataset/*.*'))
+    fnames = sorted(glob.glob('data/inpainting_text_dataset/*.*'))
+    mask_paths = [f for f in fnames if 'mask' in f]
+    img_paths = [f for f in fnames if 'mask' not in f]
+
+    img_path = img_paths[args.dataset_index]
+    mask_path = mask_paths[args.dataset_index]
+else:
+    img_path = img_dict[args.index]['img_path']
+    mask_path = img_dict[args.index]['mask_path']
+
 NET_TYPE = 'skip_depth6'  # 'MLP'  # 'FCN'  # one of skip_depth4|skip_depth2|UNET|ResNet
+
 
 img_pil, img_np = get_image(img_path, imsize)
 img_mask_pil, img_mask_np = get_image(mask_path, imsize)
@@ -90,8 +101,8 @@ pad = 'reflection'  # 'zero'
 OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
-    INPUT = 'meshgrid' # 'infer_freqs'
-    input_depth = 2  # args.num_freqs * 4
+    # INPUT = 'meshgrid' # 'infer_freqs'
+    input_depth = args.num_freqs * 4
     LR = args.learning_rate
     num_iter = 5001
     param_noise = False
@@ -100,18 +111,18 @@ if 'vase.png' in img_path:
     reg_noise_std = 0.03
 
     net = skip(input_depth, img_np.shape[0],
+               # num_channels_down=[128] * 5,
+               # num_channels_up=[128] * 5,
+               # num_channels_skip=[0] * 5,
+               # upsample_mode='nearest', filter_skip_size=1, filter_size_up=3, filter_size_down=3,
+               # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
                num_channels_down=[128] * 5,
                num_channels_up=[128] * 5,
-               num_channels_skip=[0] * 5,
-               upsample_mode='nearest', filter_skip_size=1, filter_size_up=3, filter_size_down=3,
+               num_channels_skip=[4] * 5,
+               filter_size_up=1, filter_size_down=1, filter_skip_size=1,
+               upsample_mode='bilinear',  # downsample_mode='avg',
+               need1x1_up=True,
                need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
-               # num_channels_down=[256] * 5,
-               # num_channels_up=[256] * 5,
-               # num_channels_skip=[128] * 5,
-               # filter_size_up=1, filter_size_down=1, filter_skip_size=1,
-               # upsample_mode='nearest',  # downsample_mode='avg',
-               # need1x1_up=True,
-               # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
     # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
@@ -127,19 +138,19 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     reg_noise_std = 0.03
 
     net = skip(input_depth, img_np.shape[0],
-               num_channels_down=[256] * 5,
-               num_channels_up=[256] * 5,
-               num_channels_skip=[128] * 5,
+               num_channels_down=[128] * 5,
+               num_channels_up=[128] * 5,
+               num_channels_skip=[4] * 5,
                filter_size_up=1, filter_size_down=1,
-               upsample_mode='nearest', filter_skip_size=1,
+               upsample_mode='bilinear', filter_skip_size=1,
                need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
     # net = MLP(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
     # net = FCN(input_depth, out_dim=3, hidden_list=[256, 256, 256, 256]).type(dtype)
 
 elif 'library.png' in img_path:
-    INPUT = 'noise'  # 'infer_freqs'
-    input_depth = 32
+    # INPUT = 'noise'  # 'infer_freqs'
+    input_depth = args.num_freqs * 4
 
     num_iter = 5001
     show_every = 50
@@ -151,20 +162,20 @@ elif 'library.png' in img_path:
 
         depth = int(NET_TYPE[-1])
         net = skip(input_depth, img_np.shape[0],
-                   num_channels_down=[16, 32, 64, 128, 128, 128][:depth],
-                   num_channels_up=[16, 32, 64, 128, 128, 128][:depth],
-                   num_channels_skip=[0, 0, 0, 0, 0, 0][:depth],
-                   filter_size_up=3, filter_size_down=5, filter_skip_size=1,
-                   upsample_mode='nearest',  # downsample_mode='avg',
-                   need1x1_up=False,
-                   need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
-                   # num_channels_down=[256] * 5,
-                   # num_channels_up=[256] * 5,
-                   # num_channels_skip=[128] * 5,
-                   # filter_size_up=1, filter_size_down=1, filter_skip_size=1,
-                   # upsample_mode='nearest',  #downsample_mode='avg',
-                   # need1x1_up=True,
+                   # num_channels_down=[16, 32, 64, 128, 128, 128][:depth],
+                   # num_channels_up=[16, 32, 64, 128, 128, 128][:depth],
+                   # num_channels_skip=[0, 0, 0, 0, 0, 0][:depth],
+                   # filter_size_up=3, filter_size_down=5, filter_skip_size=1,
+                   # upsample_mode='nearest',  # downsample_mode='avg',
+                   # need1x1_up=False,
                    # need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+                   num_channels_down=[128] * 5,
+                   num_channels_up=[128] * 5,
+                   num_channels_skip=[4] * 5,
+                   filter_size_up=1, filter_size_down=1, filter_skip_size=1,
+                   upsample_mode='bilinear',  #downsample_mode='avg',
+                   need1x1_up=True,
+                   need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
         LR = args.learning_rate
 
@@ -196,7 +207,21 @@ elif 'library.png' in img_path:
     else:
         assert False
 else:
-    assert False
+    input_depth = args.num_freqs * 4
+    LR = args.learning_rate
+    num_iter = 6001
+    param_noise = False
+    show_every = 50
+    figsize = 5
+    reg_noise_std = 0.03
+
+    net = skip(input_depth, img_np.shape[0],
+               num_channels_down=[128] * 5,
+               num_channels_up=[128] * 5,
+               num_channels_skip=[4] * 5,
+               filter_size_up=1, filter_size_down=1,
+               upsample_mode='bilinear', filter_skip_size=1,
+               need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
 net = net.type(dtype)
 net_input = get_input(input_depth, INPUT, (img_pil.size[1], img_pil.size[0]), freq_dict=freq_dict).type(dtype)
@@ -298,10 +323,10 @@ log_config.update(**freq_dict)
 filename = os.path.basename(img_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
-                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'], 'baseline'],
+                 tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method']],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                 job_type='train',
-                 group='Inpainting',
+                 job_type='Text mask_{}_{}'.format(LR, INPUT),
+                 group='Inpainting - Dataset',
                  mode='online',
                  save_code=True,
                  config=log_config,
@@ -345,3 +370,4 @@ plot_image_grid([out_np, img_np], factor=5)
 plt.plot(psnr_gt_list)
 plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))
 plt.show()
+run.finish()

@@ -2,12 +2,13 @@ from __future__ import print_function
 
 import glob
 import random
+import time
 
 from models import *
 from utils.denoising_utils import *
 from utils.wandb_utils import *
 from utils.freq_utils import *
-from utils.common_utils import compare_psnr_y
+from utils.common_utils import compare_psnr_y, plot_grad_flow
 
 import torch.optim
 import matplotlib.pyplot as plt
@@ -38,8 +39,8 @@ parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
 parser.add_argument('--freq_lim', default=8, type=int)
 parser.add_argument('--freq_th', default=20, type=int)
+parser.add_argument('--noise_depth', default=32, type=int)
 args = parser.parse_args()
-
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 imsize = -1
@@ -48,14 +49,16 @@ sigma = 25
 sigma_ = sigma/255.
 
 if args.index == -1:
-    fnames_list = sorted(glob.glob('data/denoising_dataset/*.*'))
-    fnames = fnames_list
+    fnames = sorted(glob.glob('data/denoising_dataset/*.*'))
+    fnames_list = fnames
     if args.dataset_index != -1:
-        fnames_list = fnames_list[args.dataset_index:args.dataset_index + 1]
+        fnames_list = fnames[args.dataset_index:args.dataset_index + 1]
 elif args.index == -2:
-    k = 8
-    fnames_list = sorted(glob.glob('../IL_video_inpainting/data/rollerblade_imgs/*.png'))
-    fnames = np.random.choice(fnames_list, 8)
+    # k = 8
+    # fnames = sorted(glob.glob('../IL_video_inpainting/data/rollerblade_imgs/*.png'))
+    fnames = sorted(glob.glob('./data/videos/blackswan/*.jpg'))
+    fnames_list = fnames
+    # fnames_list = np.random.choice(fnames, 8, replace=False)
 else:
     fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png',
               'data/sr/zebra_GT.png']
@@ -74,10 +77,15 @@ for fname in fnames_list:
             plot_image_grid([img_np], 4, 5)
 
     elif fname in fnames:
-        # Add synthetic noise
         img_pil = crop_image(get_image(fname, imsize)[0], d=32)
         img_np = pil_to_np(img_pil)
         output_depth = img_np.shape[0]
+        if args.index == -2:
+            from utils.video_utils import crop_and_resize
+            img_np = crop_and_resize(img_np.transpose(1, 2, 0), (192, 384))
+            img_np = img_np.transpose(2, 0, 1)
+            img_pil = np_to_pil(img_np)
+
         img_noisy_pil, img_noisy_np = get_noisy_image(img_np, sigma_)
 
         # if PLOT:
@@ -93,7 +101,7 @@ for fname in fnames_list:
         OPT_OVER = 'net'
 
     train_input = True if ',' in OPT_OVER else False
-    reg_noise_std = 0  # 1. / 30.  # set to 1./20. for sigma=50
+    reg_noise_std = 1. / 30.  # set to 1./20. for sigma=50
     LR = args.learning_rate
 
     OPTIMIZER = 'adam'  # 'LBFGS'
@@ -130,13 +138,16 @@ for fname in fnames_list:
         num_iter = 1801
         figsize = 4
         freq_dict = {
-            'method': 'log',
+            'method': 'linear',
             'cosine_only': False,
             'n_freqs': args.num_freqs,
             'base': 2 ** (adapt_lim / (args.num_freqs-1)),
         }
 
-        input_depth = args.num_freqs * 4
+        if INPUT == 'noise':
+            input_depth = args.noise_depth
+        else:
+            input_depth = args.num_freqs * 4
         net = get_net(input_depth, 'skip', pad, n_channels=output_depth,
                       skip_n33d=128,
                       skip_n33u=128,
@@ -170,14 +181,11 @@ for fname in fnames_list:
     last_net = None
     psrn_noisy_last = 0
     psnr_gt_list = []
-    best_psnr_gt = -1.0
-    best_iter = 0
-    best_img = None
     i = 0
-    early_stopping = 1800
+    input_grads = {idx: [] for idx in range(net_input_saved.shape[0])}
 
     def closure():
-        global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list, best_img, best_psnr_gt, best_iter
+        global i, out_avg, psrn_noisy_last, last_net, net_input, psnr_gt_list
 
         if INPUT == 'noise':
             if reg_noise_std > 0:
@@ -210,14 +218,15 @@ for fname in fnames_list:
         total_loss = mse(out, img_noisy_torch)
         total_loss.backward()
 
+        # for idx in input_grads.keys():
+        #     g_ = net_input_saved.grad[idx].detach().cpu().numpy()
+        #     input_grads[idx].append(g_)
+        #     wandb.log({'grad_{}'.format(idx): np.abs(g_)}, commit=False)
+
         out_np = out.detach().cpu().numpy()[0]
         psrn_noisy = compare_psnr(img_noisy_np, out_np)
         psrn_gt = compare_psnr(img_np, out_np)
         psrn_gt_sm = compare_psnr(img_np, out_avg.detach().cpu().numpy()[0])
-
-        if i == early_stopping:
-            log_images(np.array([np.clip(out_np, 0, 1), img_np]), early_stopping,
-                       task='Out image - {}'.format(early_stopping), psnr=psrn_gt)
 
         if PLOT and i % show_every == 0:
             print('Iteration %05d    Loss %f   PSNR_noisy: %f   PSRN_gt: %f PSNR_gt_sm: %f' % (
@@ -225,10 +234,6 @@ for fname in fnames_list:
             psnr_gt_list.append(psrn_gt)
 
             wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy, 'psnr_gt_smooth': psrn_gt_sm}, commit=False)
-            if psrn_gt > best_psnr_gt:
-                best_psnr_gt = psrn_gt
-                best_img = np.copy(out_np)
-                best_iter = i
         # Backtracking
         # if i % show_every:
         #     if psrn_noisy - psrn_noisy_last < -2:
@@ -267,18 +272,20 @@ for fname in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                           'dataset_comp', 'denoising', 'FCN'],
+                           'denoising'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='SimpleCNN_no_reg_noise_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
-                     group='Denoising - Dataset',
+                     job_type='{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
+                     group='Denoising - Frequency sensitivity',
                      mode='online',
                      save_code=True,
                      config=log_config,
-                     notes='Baseline'
+                     notes=''
                      )
 
     wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)
+    # wandb.watch(net, 'all')
     log_input_images(img_noisy_np, img_np)
+    print('Number of params: %d' % s)
     print(net)
     p = get_params(OPT_OVER, net, net_input, input_encoder=enc)
     if train_input:
@@ -292,7 +299,9 @@ for fname in fnames_list:
         else:
             log_inputs(net_input)
 
+    t = time.time()
     optimize(OPTIMIZER, p, closure, LR, num_iter)
+    t_training = time.time() - t
     if INPUT == 'infer_freqs':
         if freq_dict['method'] == 'learn2':
             net_input = enc(net_input_saved)
@@ -305,12 +314,10 @@ for fname in fnames_list:
         net_input = net_input_saved
 
     out_np = torch_to_np(net(net_input))
-    # log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Denoising')
-    # log_images(np.array([np.clip(best_img, 0, 1), img_np]), best_iter, task='Best Image', psnr=best_psnr_gt)
     log_images(np.array([np.clip(out_np, 0, 1)]), num_iter, task='Denoising')
-    log_images(np.array([np.clip(best_img, 0, 1)]), best_iter, task='Best Image', psnr=best_psnr_gt)
     wandb.log({'PSNR-Y': compare_psnr_y(img_np, out_np)}, commit=True)
     wandb.log({'PSNR-center': compare_psnr(img_np[:, 5:-5, 5:-5], out_np[:, 5:-5, 5:-5])}, commit=True)
+    wandb.log({'training_time': t_training}, commit=False)
     q = plot_image_grid([np.clip(out_np, 0, 1), img_np], factor=13)
     plt.plot(psnr_gt_list)
     plt.title('max: {}\nlast: {}'.format(max(psnr_gt_list), psnr_gt_list[-1]))

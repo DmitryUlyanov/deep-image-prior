@@ -25,12 +25,19 @@ def log_input_images(degraded_img, gt_img):
 
 
 def log_input_video(gt_sequence, degraded_sequence):
+    B, C, H, W = degraded_sequence.shape
+    imgs_for_degraded = np.array(
+        [np_cvt_color((degraded_sequence[frame_idx]) * 255).astype(np.uint8)
+        for frame_idx in range(B)])
     B, C, H, W = gt_sequence.shape
-    wandb.log({'Degraded Video': [wandb.Image(np_cvt_color(degraded_sequence[frame_idx]).transpose(1, 2, 0),
-                                              caption='Frame #{}'.format(frame_idx)) for frame_idx in range(B)]},
+    imgs_for_gt = np.array(
+        [np_cvt_color((gt_sequence[frame_idx]) * 255).astype(np.uint8) for frame_idx in range(B)])
+
+    wandb.log({'Degraded Video (FPS=10)': wandb.Video(imgs_for_degraded, fps=10, format='mp4'),
+              'Degraded Video (FPS=25)': wandb.Video(imgs_for_degraded, fps=25, format='mp4')},
               commit=False)
-    wandb.log({'Clean Video': [wandb.Image(np_cvt_color(gt_sequence[frame_idx]).transpose(1, 2, 0),
-                                           caption='Frame #{}'.format(frame_idx)) for frame_idx in range(B)]},
+    wandb.log({'Clean Video (FPS=10)': wandb.Video(imgs_for_gt, fps=10, format='mp4'),
+               'Clean Video (FPS=25)': wandb.Video(imgs_for_gt, fps=25, format='mp4')},
               commit=False)
 
 

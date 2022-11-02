@@ -6,6 +6,7 @@ import os
 import random
 import glob
 import wandb
+import time
 
 # from skimage.measure import compare_psnr
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
@@ -122,7 +123,7 @@ for path_to_image in fnames_list:
 
 
     def closure():
-        global i, net_input, last_net, psnr_LR_last, LR, reduce_lr, best_img, best_psnr_hr, best_iter
+        global i, net_input, last_net, psnr_LR_last, LR, reduce_lr
 
         if INPUT == 'noise':
             if reg_noise_std > 0:
@@ -174,22 +175,11 @@ for path_to_image in fnames_list:
         # History
         psnr_history.append([psnr_LR, psnr_HR])
 
-        if i == early_stopping:
-            psnr_early_stopping = compare_psnr(put_in_center(np.clip(torch_to_np(out_HR), 0, 1),
-                                                             imgs['orig_np'].shape[1:]),
-                                               put_in_center(imgs['HR_np'], imgs['orig_np'].shape[1:]))
-            log_images(np.array([np.clip(torch_to_np(out_HR), 0, 1), imgs['HR_np']]),
-                       early_stopping, task='Out image - {}'.format(early_stopping), psnr=psnr_early_stopping)
-
         if PLOT and i % show_every == 0:
             print('Iteration %05d    PSNR_LR %.3f   PSNR_HR %.3f' % (i, psnr_LR, psnr_HR))
             wandb.log({'psnr_hr': psnr_HR, 'psnr_lr': psnr_LR}, commit=False)
             out_HR_np = torch_to_np(out_HR)
             # plot_image_grid([imgs['HR_np'], imgs['bicubic_np'], np.clip(out_HR_np, 0, 1)], factor=13, nrow=3)
-            if psnr_HR > best_psnr_hr:
-                best_psnr_hr = psnr_HR
-                best_img = np.copy(out_HR_np)
-                best_iter = i
         i += 1
 
         # Log metrics
@@ -241,9 +231,6 @@ for path_to_image in fnames_list:
     last_net = None
     psnr_LR_last = 0
     reduce_lr = True
-    best_psnr_hr = -1.0
-    best_img = None
-    best_iter = 0
     i = 0
     early_stopping = 2000
 
@@ -259,8 +246,10 @@ for path_to_image in fnames_list:
                                                       freq_dict['cosine_only'])
         else:
             log_inputs(net_input)
-
+    t = time.time()
     optimize(OPTIMIZER, p, closure, LR, num_iter)
+    t_training = time.time() - t
+
     if INPUT == 'infer_freqs':
         net_input = generate_fourier_feature_maps(net_input_saved, (imgs['HR_pil'].size[1], imgs['HR_pil'].size[0]),
                                                   dtype,
@@ -279,13 +268,8 @@ for path_to_image in fnames_list:
                      out_HR_np], factor=4, nrow=1)
 
     last_psnr_in_center = compare_psnr(result_deep_prior, put_in_center(imgs['HR_np'], imgs['orig_np'].shape[1:]))
-    # log_images(np.array([np.clip(out_HR_np, 0, 1), imgs['HR_np']]), num_iter, task='Super-Resolution',
-    #            psnr=last_psnr_in_center)
-    # log_images(np.array([np.clip(best_img, 0, 1), imgs['HR_np']]), best_iter, task='Best Image', psnr=best_psnr_hr)
     log_images(np.array([np.clip(out_HR_np, 0, 1)]), num_iter, task='Super-Resolution',
                psnr=last_psnr_in_center)
-    log_images(np.array([np.clip(best_img, 0, 1)]), best_iter, task='Best Image', psnr=best_psnr_hr)
-
     # Calc PSNR-Y for comparison to DIP
     q1 = result_deep_prior[:3].sum(0)
     t1 = np.where(q1.sum(0) > 0)[0]
@@ -297,6 +281,7 @@ for path_to_image in fnames_list:
         psnr_y = compare_psnr(imgs['orig_np'][:1, t2[0] + 4:t2[-1] - 4, t1[0] + 4:t1[-1] - 4],
                                 result_deep_prior[:1, t2[0] + 4:t2[-1] - 4, t1[0] + 4:t1[-1] - 4])
     wandb.log({'PSNR-Y': psnr_y}, commit=True)
+    wandb.log({'training_time': t_training}, commit=False)
 
     fig, axes = plt.subplots(1, 2)
     axes[0].plot([h[0] for h in psnr_history])

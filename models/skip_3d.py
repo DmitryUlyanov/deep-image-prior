@@ -2,10 +2,26 @@
 # Code modified from https://github.com/DmitryUlyanov/deep-image-prior
 ######################################################################
 
+from .common import *
 import torch
 import torch.nn as nn
-from .common import *
+import torch.nn.functional as F
+import collections
+from itertools import repeat
 
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable):
+            return tuple(x)
+        return tuple(repeat(x, n))
+
+    return parse
+
+
+_single = _ntuple(1)
+_pair = _ntuple(2)
+_triple = _ntuple(3)
+_quadruple = _ntuple(4)
 
 def skip_3d_mlp(
         num_input_channels=1, num_output_channels=3,
@@ -68,7 +84,7 @@ def skip_3d_mlp(
             skip.add(bn_skip)
             skip.add(act(act_fun))
 
-        conv_down = conv3d(input_depth, num_channels_down[i], filter_size_down[i], stride=(2, 2, 2), bias=need_bias,
+        conv_down = conv3d(input_depth, num_channels_down[i], filter_size_down[i], stride=(1, 2, 2), bias=need_bias,
                            pad=pad, downsample_mode=downsample_mode[i])
         bn_down = BatchNorm3D(num_channels_down[i])
         deeper.add(conv_down)
@@ -93,6 +109,7 @@ def skip_3d_mlp(
             k = num_channels_up[i + 1]
 
         deeper.add(nn.Upsample(scale_factor=2, mode=upsample_mode[i]))
+        # deeper.add(Upsample3D(scale_factor=2, mode=upsample_mode[i]))
 
         conv_up = conv3d(num_channels_skip[i] + k, num_channels_up[i], filter_size_up[i], bias=need_bias, pad=pad)
         bn_up = BatchNorm3D(num_channels_up[i])
@@ -108,6 +125,123 @@ def skip_3d_mlp(
             model_tmp.add(act(act_fun))
 
         input_depth = num_channels_down[i]
+        model_tmp = deeper_main
+
+    conv_final = conv3d(num_channels_up[0], num_output_channels, kernel_size=(1, 1, 1), bias=need_bias, pad=pad)
+    model.add(conv_final)
+    if need_sigmoid:
+        model.add(nn.Sigmoid())
+
+    return model
+
+
+def skip_3d_mlp_enc_inp(
+        num_input_channels=1, num_output_channels=3,
+        num_channels_down=[16, 32, 64, 128, 128], num_channels_up=[16, 32, 64, 128, 128],
+        num_channels_skip=[4, 4, 4, 4, 4],
+        filter_size_down=(1, 1, 1), filter_size_up=(1, 1, 1), filter_size_skip=(1, 1, 1),
+        upsample_mode='trilinear', downsample_mode='stride',
+        need_sigmoid=True, need_bias=True, need1x1_up=True,
+        pad='zero', act_fun='LeakyReLU'
+):
+    """Assembles encoder-decoder with skip connections, using 3D convolutions.
+
+    Arguments:
+        act_fun: Either string 'LeakyReLU|Swish|ELU|none' or module (e.g. nn.ReLU)
+        pad (string): zero|reflection (default: 'zero')
+        upsample_mode (string): 'nearest|bilinear' (default: 'nearest')
+        downsample_mode (string): 'stride|avg|max' (default: 'stride')
+    """
+    assert len(num_channels_down) == len(num_channels_up) == len(num_channels_skip)
+
+    n_scales = len(num_channels_down)
+
+    if not isinstance(upsample_mode, list):
+        upsample_mode = [upsample_mode] * n_scales
+
+    if not isinstance(downsample_mode, list):
+        downsample_mode = [downsample_mode] * n_scales
+
+    if not isinstance(filter_size_down, list):
+        filter_size_down = [filter_size_down] * n_scales
+
+    if not isinstance(filter_size_up, list):
+        filter_size_up = [filter_size_up] * n_scales
+
+    last_scale = n_scales - 1
+
+    cur_depth = None
+
+    model = nn.Sequential()
+    model_tmp = model
+
+    input_depth = num_input_channels
+    for i in range(len(num_channels_down)):
+
+        deeper = nn.Sequential()
+        skip = nn.Sequential()
+
+        if num_channels_skip[i] != 0:
+            model_tmp.add(Concat(1, skip, deeper))
+        else:
+            model_tmp.add(deeper)
+
+        bn_up = BatchNorm3D(num_channels_skip[i] + (num_channels_up[i + 1] if i < last_scale else num_channels_down[i]))
+        model_tmp.add(bn_up)
+
+        if num_channels_skip[i] != 0:
+            if i > 0:
+                skip.add(InpConcat())
+
+            conv_skip = conv3d(input_depth, num_channels_skip[i], filter_size_skip, bias=need_bias, pad=pad)
+            bn_skip = BatchNorm3D(num_channels_skip[i])
+            skip.add(conv_skip)
+            skip.add(bn_skip)
+            skip.add(act(act_fun))
+
+        if i > 0:
+            deeper.add(InpConcat())
+
+        conv_down = conv3d(input_depth, num_channels_down[i], filter_size_down[i], stride=(1, 2, 2), bias=need_bias,
+                           pad=pad, downsample_mode=downsample_mode[i])
+        bn_down = BatchNorm3D(num_channels_down[i])
+        deeper.add(conv_down)
+        # deeper.add(AvgPool3D())
+        deeper.add(bn_down)
+        deeper.add(act(act_fun))
+
+        conv_down = conv3d(num_channels_down[i], num_channels_down[i], filter_size_down[i], bias=need_bias, pad=pad)
+        bn_down = BatchNorm3D(num_channels_down[i])
+        deeper.add(conv_down)
+        deeper.add(bn_down)
+        deeper.add(act(act_fun))
+
+        deeper_main = nn.Sequential()
+
+        if i == len(num_channels_down) - 1:
+            # The deepest
+            k = num_channels_down[i]
+        else:
+            deeper.add(deeper_main)
+            k = num_channels_up[i + 1]
+
+        deeper.add(nn.Upsample(scale_factor=2, mode=upsample_mode[i]))
+        # deeper.add(Upsample3D(scale_factor=2, mode=upsample_mode[i]))
+
+        conv_up = conv3d(num_channels_skip[i] + k, num_channels_up[i], filter_size_up[i], bias=need_bias, pad=pad)
+        bn_up = BatchNorm3D(num_channels_up[i])
+        model_tmp.add(conv_up)
+        model_tmp.add(bn_up)
+        model_tmp.add(act(act_fun))
+
+        if need1x1_up:
+            conv_up = conv3d(num_channels_up[i], num_channels_up[i], kernel_size=(1, 1, 1), bias=need_bias, pad=pad)
+            bn_up = BatchNorm3D(num_channels_up[i])
+            model_tmp.add(conv_up)
+            model_tmp.add(bn_up)
+            model_tmp.add(act(act_fun))
+
+        input_depth = num_channels_down[i] + 48
         model_tmp = deeper_main
 
     conv_final = conv3d(num_channels_up[0], num_output_channels, kernel_size=(1, 1, 1), bias=need_bias, pad=pad)
@@ -295,3 +429,35 @@ class ReflectionPad3D(nn.Module):
         y = self.padder_HW(y)
         y = y.transpose(0, 1).unsqueeze(0)  # 1 x C x D x H x W
         return self.padder_D(y)
+
+
+class InpConcat(nn.Module):
+    def __init__(self):
+        super(InpConcat, self).__init__()
+        self.input = None
+
+    def __repr__(self):
+        return 'InpConcat'
+
+    def update_input_code(self, input_code):
+        self.input = input_code
+
+    def resize_input_code(self, desired_shape):
+        input_4d = self.input.squeeze(0).transpose(0, 1)
+        X, Y = torch.meshgrid(torch.arange(1 - desired_shape[0], desired_shape[0], 2) / float(desired_shape[0] - 1),
+                              torch.arange(1 - desired_shape[1], desired_shape[1], 2) / float(desired_shape[1] - 1))
+        grid = torch.cat([X.unsqueeze(2), Y.unsqueeze(2)], dim=2)
+        grid = grid.repeat(input_4d.shape[0], 1, 1, 1).to(self.input.device)
+
+        input_4d_sampled = F.grid_sample(input_4d, grid, mode='nearest', )
+        self.input = input_4d_sampled.transpose(0, 1).unsqueeze(0)
+
+    def forward(self, x):
+        print(x.shape)
+        print(self.input.shape)
+        if x.shape == self.input.shape:
+            x_inp = x
+        else:
+            self.resize_input_code(x.shape[-2:])
+            x_inp = torch.cat([x, self.input], dim=1)
+        return x_inp

@@ -188,7 +188,7 @@ def get_input(input_depth, method, spatial_size, noise_type='u', var=1. / 10, fr
         meshgrid_np = get_meshgrid(spatial_size)
         meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0)
         if freq_dict['method'] == 'linear':
-            net_input = torch.linspace(0, freq_dict['max'], freq_dict['n_freqs'])
+            net_input = torch.linspace(1, freq_dict['base'] ** (freq_dict['n_freqs'] - 1), freq_dict['n_freqs'])
         elif freq_dict['method'] == 'random':
             net_input = positional_encoding(v=meshgrid,
                                             m=40,
@@ -528,3 +528,20 @@ class LearnableFourierPositionalEncoding(nn.Module):
 # enc = LearnableFourierPositionalEncoding(G, M, 256, 128, 32, 10)
 # pex = enc(x)
 # print(pex.shape)
+
+
+def plot_grad_flow(named_parameters):
+    ave_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if (p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+    plt.plot(ave_grads, alpha=0.3, color="b")
+    plt.hlines(0, 0, len(ave_grads) + 1, linewidth=1, color="k")
+    plt.xticks(range(0, len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(xmin=0, xmax=len(ave_grads))
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
