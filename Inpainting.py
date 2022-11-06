@@ -92,7 +92,7 @@ img_mask_var = np_to_torch(img_mask_np).type(dtype)
 plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 freq_dict = {
-        'method': 'log',
+        'method': 'random',
         'cosine_only': False,
         'n_freqs': args.num_freqs,
         'base': 2 ** (8 / (args.num_freqs-1))
@@ -104,7 +104,7 @@ if 'vase.png' in img_path:
     # INPUT = 'meshgrid' # 'infer_freqs'
     input_depth = args.num_freqs * 4
     LR = args.learning_rate
-    num_iter = 5001
+    num_iter = 8001
     param_noise = False
     show_every = 50
     figsize = 5
@@ -152,7 +152,7 @@ elif 'library.png' in img_path:
     # INPUT = 'noise'  # 'infer_freqs'
     input_depth = args.num_freqs * 4
 
-    num_iter = 5001
+    num_iter = 8001
     show_every = 50
     figsize = 8
     reg_noise_std = 0.00
@@ -325,8 +325,8 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method']],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                 job_type='Text mask_{}_{}'.format(LR, INPUT),
-                 group='Inpainting - Dataset',
+                 job_type='{}_{}'.format(LR, INPUT),
+                 group='Inpainting',
                  mode='online',
                  save_code=True,
                  config=log_config,

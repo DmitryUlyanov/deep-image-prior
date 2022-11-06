@@ -350,14 +350,6 @@ def get_embedder(multires=10, i=0):
     return embed, embedder_obj.out_dim
 
 
-def sample_indices(input_depth, net_input_saved):
-    indices = torch.multinomial(torch.arange(0, net_input_saved.size(1), dtype=torch.float),
-                                input_depth, replacement=False)
-
-    assert len(torch.unique(indices)) == input_depth
-    return indices
-
-
 def generate_fourier_feature_maps(net_input, spatial_size, dtype=torch.float32, only_cosine=False):
     meshgrid_np = get_meshgrid(spatial_size)
     meshgrid = torch.from_numpy(meshgrid_np).permute(1, 2, 0).unsqueeze(0).type(dtype)

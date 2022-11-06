@@ -88,11 +88,14 @@ for path_to_image in fnames_list:
         'n_freqs': args.num_freqs,
         'base': 2 ** (args.freq_lim / (args.num_freqs - 1))
     }
+    if INPUT == 'meshgrid':
+        input_depth = 2
+    else:
+        input_depth = args.num_freqs * 4
 
-    input_depth = args.num_freqs * 4
     if factor == 4:
         num_iter = 2001
-        reg_noise_std = args.reg_noise_std
+        reg_noise_std = 0.03
     elif factor == 8:
         num_iter = 4001
         reg_noise_std = 0.05
@@ -104,14 +107,14 @@ for path_to_image in fnames_list:
     print('Input is {}, Depth = {}'.format(INPUT, input_depth))
 
     NET_TYPE = 'skip'  # UNet, ResNet
-    # net = get_net(input_depth, 'skip', pad, n_channels=output_depth,
-    #               skip_n33d=128,
-    #               skip_n33u=128,
-    #               skip_n11=4,
-    #               num_scales=5,
-    #               upsample_mode='bilinear').type(dtype)
-    # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
-    net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
+    net = get_net(input_depth, 'skip', pad, n_channels=output_depth,
+                  skip_n33d=128,
+                  skip_n33u=128,
+                  skip_n11=4,
+                  num_scales=5,
+                  upsample_mode='bilinear').type(dtype)
+    net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
+    # net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
 
     # Losses
     mse = torch.nn.MSELoss().type(dtype)
@@ -207,9 +210,9 @@ for path_to_image in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                            dataset_tag, 'freq_lim: {}'.format(args.freq_lim), 'sr', 'FCN'],
+                            dataset_tag, 'freq_lim: {}'.format(args.freq_lim), 'sr', '1x1'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='SimpleCNN_{}_{}_{}_freq_lim_{}_num_freqs_{}'.format(dataset_tag, INPUT, LR, args.freq_lim,
+                     job_type='DIP_MLP_1x1_sr_{}_{}_{}_freq_lim_{}_num_freqs_{}'.format(dataset_tag, INPUT, LR, args.freq_lim,
                                                                                  args.num_freqs),
                      group='Super-Resolution - Dataset x{}'.format(factor),
                      mode='online',
@@ -282,6 +285,7 @@ for path_to_image in fnames_list:
                                 result_deep_prior[:1, t2[0] + 4:t2[-1] - 4, t1[0] + 4:t1[-1] - 4])
     wandb.log({'PSNR-Y': psnr_y}, commit=True)
     wandb.log({'training_time': t_training}, commit=False)
+    print('Training time: {}'.format(t_training))
 
     fig, axes = plt.subplots(1, 2)
     axes[0].plot([h[0] for h in psnr_history])
