@@ -1,7 +1,10 @@
 matplotlib==3.3.4
 numpy==1.19.5
-Pillow==8.2.0
-random_fourier_features_pytorch==1.0.0
+opencv_python==4.5.5.64
+Pillow==9.3.0
 scikit_image==0.17.2
+scikit_video==1.1.11
+skimage==0.17.2
+torch==1.10.1+cu111
+torchvision==0.11.2+cu111
 tqdm==4.64.0
-wandb

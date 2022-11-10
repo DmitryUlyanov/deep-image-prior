@@ -4,7 +4,7 @@ import torch.utils.data
 import random
 from PIL import Image
 from utils.denoising_utils import get_noisy_image
-from utils.common_utils import np_to_torch, get_input, crop_image, np_to_pil, pil_to_np
+from utils.common_utils import np_to_torch, get_input, crop_image
 
 
 def crop_and_resize(img, resize):
