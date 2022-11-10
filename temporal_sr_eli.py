@@ -140,7 +140,7 @@ def eval_video(val_dataset, model, epoch):
 
     psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True), img_for_psnr)
 
-    writer = skvideo.io.FFmpegWriter("outputvideo_{}_psnr.mp4".format(epoch, psnr_whole_video))
+    writer = skvideo.io.FFmpegWriter("outputvideo_{}_psnr_{}.mp4".format(epoch, psnr_whole_video))
     for i in range(val_dataset.n_frames):
         writer.writeFrame(img_for_video[i, :, :, :])
         plt.imsave('out_frame_{}_{}.png'.format(epoch, i), img_for_video[i, :, :, :].transpose(1, 2, 0))
