@@ -55,14 +55,16 @@ if args.index == -1:
         fnames_list = fnames[args.dataset_index:args.dataset_index + 1]
 elif args.index == -2:
     # k = 8
-    fnames = sorted(glob.glob('../IL_video_inpainting/data/rollerblade_imgs/*.png'))
-    # fnames = sorted(glob.glob('./data/videos/blackswan/*.jpg'))
+    # fnames = sorted(glob.glob('./data/videos/rollerblade/*.png'))
+    # fnames = sorted(glob.glob('./data/videos/blackswan/*.png'))
+    # fnames = sorted(glob.glob('./data/videos/judo/*.jpg'))
+    fnames = sorted(glob.glob('./data/videos/dog/*.jpg'))
     # fnames = sorted(glob.glob('./data/videos/tennis/*.png'))
     fnames_list = fnames
     # fnames_list = np.random.choice(fnames, 8, replace=False)
 else:
     fnames = ['data/denoising/F16_GT.png', 'data/inpainting/kate.png', 'data/inpainting/vase.png',
-              'data/sr/zebra_GT.png']
+              'data/sr/zebra_GT.png', 'data/denoising/synthetic_img.png', 'data/denoising/synthetic3_img_600.png']
     fnames_list = [fnames[args.index]]
 
 training_times = []
@@ -82,13 +84,14 @@ for fname in fnames_list:
         img_pil = crop_image(get_image(fname, imsize)[0], d=32)
         img_np = pil_to_np(img_pil)
         output_depth = img_np.shape[0]
-        if args.index == -2:
-            from utils.video_utils import crop_and_resize
-            img_np = crop_and_resize(img_np.transpose(1, 2, 0), (192, 384))
-            img_np = img_np.transpose(2, 0, 1)
-            img_pil = np_to_pil(img_np)
+        # if args.index == -2:
+        #     from utils.video_utils import crop_and_resize
+        #     img_np = crop_and_resize(img_np.transpose(1, 2, 0), (192, 384))
+        #     img_np = img_np.transpose(2, 0, 1)
+        #     img_pil = np_to_pil(img_np)
 
         img_noisy_pil, img_noisy_np = get_noisy_image(img_np, sigma_)
+        # img_noisy_pil, img_noisy_np = img_pil, img_np
 
         # if PLOT:
         #     plot_image_grid([img_np, img_noisy_np], 4, 6)
@@ -160,7 +163,7 @@ for fname in fnames_list:
                       num_scales=5,
                       upsample_mode='bilinear').type(dtype)
 
-        net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
+        # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
         # net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
     else:
         assert False
@@ -227,10 +230,6 @@ for fname in fnames_list:
         t_s = time.time()
         total_loss.backward()
         t_bwd.append(time.time() - t_s)
-        # for idx in input_grads.keys():
-        #     g_ = net_input_saved.grad[idx].detach().cpu().numpy()
-        #     input_grads[idx].append(g_)
-        #     wandb.log({'grad_{}'.format(idx): np.abs(g_)}, commit=False)
 
         out_np = out.detach().cpu().numpy()[0]
         psrn_noisy = compare_psnr(img_noisy_np, out_np)
@@ -241,7 +240,9 @@ for fname in fnames_list:
             print('Iteration %05d    Loss %f   PSNR_noisy: %f   PSRN_gt: %f PSNR_gt_sm: %f' % (
                 i, total_loss.item(), psrn_noisy, psrn_gt, psrn_gt_sm))
             psnr_gt_list.append(psrn_gt)
-
+            # wandb.log({'Fitting': wandb.Image(np.clip(np.transpose(out_np, (1, 2, 0)), 0, 1),
+            #                                           caption='step {}'.format(i))}, commit=False)
+            # visualize_fourier(out[0].detach().cpu(), iter=i)
             wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy, 'psnr_gt_smooth': psrn_gt_sm}, commit=False)
         # Backtracking
         # if i % show_every:
@@ -280,9 +281,9 @@ for fname in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                           'denoising', 'ReluNet'],
+                           'denoising'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='ReluNet_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
+                     job_type='dog_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
                      group='Denoising',
                      mode='online',
                      save_code=True,
@@ -293,6 +294,7 @@ for fname in fnames_list:
     wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)
     # wandb.watch(net, 'all')
     log_input_images(img_noisy_np, img_np)
+    # visualize_fourier(img_noisy_torch[0].detach().cpu(), is_gt=True, iter=0)
     print('Number of params: %d' % s)
     print(net)
     p = get_params(OPT_OVER, net, net_input, input_encoder=enc)

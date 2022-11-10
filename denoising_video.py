@@ -42,12 +42,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 imsize = -1
 PLOT = True
 sigma = 25
-sigma_ = sigma / 255.
 mode = ['2d', '3d'][0]
 
 
 def eval_video(val_dataset, model, epoch):
-    spatial_size = vid_dataset.get_video_dims()
+    spatial_size = vid_dataset.get_cropped_video_dims()
     img_for_video = np.zeros((val_dataset.n_frames, 3, *spatial_size), dtype=np.uint8)
     img_for_psnr = np.zeros((val_dataset.n_frames, 3, *spatial_size), dtype=np.float32)
 
@@ -60,18 +59,29 @@ def eval_video(val_dataset, model, epoch):
             batch_data = val_dataset.prepare_batch(batch_data)
 
             net_out = model(batch_data['input_batch'])
-            out = net_out  # N x 3 x H x W
+            if mode == '3d':
+                out = net_out.squeeze(0).transpose(0, 1)
+            else:
+                out = net_out  # N x 3 x H x W
+
             out_np = out.detach().cpu().numpy()
 
             img_for_psnr[batch_data['cur_batch']] = out_np
             out_rgb = np.array([np_cvt_color(o) for o in out_np])
             img_for_video[batch_data['cur_batch']] = (out_rgb * 255).astype(np.uint8)
 
-    psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True), img_for_psnr)
+    ignore_start_ind = vid_dataset_eval.n_batches * vid_dataset_eval.batch_size
+    psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True)[:ignore_start_ind],
+                                    img_for_psnr[:ignore_start_ind])
     wandb.log({'Checkpoint (FPS=10)'.format(epoch): wandb.Video(img_for_video, fps=10, format='mp4'),
                'Checkpoint (FPS=25)'.format(epoch): wandb.Video(img_for_video, fps=25, format='mp4'),
                'Video PSNR': psnr_whole_video},
               commit=True)
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': net.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, 'denoising_checkpoint_{}.pth'.format(epoch))
 
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
@@ -79,10 +89,12 @@ vid_dataset = VideoDataset(args.input_vid_path,
                            input_type=INPUT,
                            num_freqs=args.num_freqs,
                            task='denoising',
-                           crop_shape=(480, 854),
-                           batch_size=1,
+                           sigma=sigma,
+                           crop_shape=None,
+                           batch_size=6,
                            arch_mode=mode,
                            train=True,
+                           temp_stride=1,
                            mode='cont')
 
 
@@ -90,10 +102,11 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 input_type=INPUT,
                                 num_freqs=args.num_freqs,
                                 task='denoising',
-                                crop_shape=(480, 854),
-                                batch_size=1,
+                                crop_shape=None,
+                                batch_size=6,
                                 arch_mode=mode,
                                 train=False,
+                                temp_stride=1,
                                 mode='cont')
 pad = 'reflection'
 if INPUT == 'infer_freqs':
@@ -108,8 +121,8 @@ LR = args.learning_rate
 OPTIMIZER = 'adam'  # 'LBFGS'
 exp_weight = 0.99
 if mode == '2d':
-    show_every = 300# * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
-    n_epochs = 10000# * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
+    show_every = 300  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
+    n_epochs = 15000  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
 else:
     show_every = 300
     n_epochs = 5000
@@ -191,6 +204,7 @@ def train_batch(batch_data):
         out = net_out
 
     total_loss = mse(out, batch_data['img_noisy_batch'])
+    # total_loss = total_loss / accum_iter
     total_loss.backward()
 
     out_np = out.detach().cpu().numpy()
@@ -223,8 +237,9 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, vid_dataset.freq_dict['method'],
                        '{}-PIP'.format(mode)],
-                 name='test_{}_depth_{}_{}_{}_skip_8_conv_256'.format(filename, input_depth, '{}'.format(INPUT), mode),
-                 job_type='test_{}_{}'.format(INPUT, LR),
+                 name='{}_depth_{}_{}_{}_sigma_{}'.format(filename, input_depth, '{}'.format(INPUT),
+                                                                          mode, sigma),
+                 job_type='{}_{}'.format(INPUT, LR),
                  group='Denoising - Video',
                  mode='online',
                  save_code=True,
@@ -251,10 +266,10 @@ for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch', position=0):
         for j in range(num_iter):
             optimizer.zero_grad()
             loss, out_sequence, psnr_gt = train_batch(batch_data)
-            running_loss += loss.item()
             running_psnr += psnr_gt
+            running_loss += loss.item()
             optimizer.step()
-        img_idx.append(batch_data['cur_batch'][0])
+
     denom = n_batches #if mode == '3d' else (epoch + 1)
     # Log metrics for each epoch
     wandb.log({'epoch loss': running_loss / denom, 'epoch psnr': running_psnr / denom}, commit=False)

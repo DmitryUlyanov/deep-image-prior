@@ -1,6 +1,8 @@
 import wandb
 import numpy as np
 from utils.common_utils import np_cvt_color
+import matplotlib.pyplot as plt
+from torch.fft import fft2, fftshift
 
 
 def log_images(array_of_imgs, iter, task, psnr=None, commit=True):
@@ -50,3 +52,50 @@ def log_inputs(inputs):
 
     wandb.log({'Input': [wandb.Image(inputs_arr[ch_idx], caption='channel #{}'.format(ch_idx)) for ch_idx in range(C)]},
               commit=False)
+
+
+f1_ref = 0
+f2_ref = 0
+f3_ref = 0
+
+
+def visualize_fourier(img, iter, is_gt=False):
+    global f1_ref, f2_ref, f3_ref
+    if is_gt:
+        iter='gt'
+
+    H, W = img.shape[-2:]
+    f = fft2(img)
+    f = fftshift(f)
+    mag = f.abs()
+    fig, ax = plt.subplots(1, 1, figsize=(30, 30))
+    mag_norm = (mag/mag.max())[0]
+    ax.matshow(mag_norm, cmap='jet')
+    title = 'GT - 2D FT' if is_gt else '2D - FT'
+    plt.title(title)
+    plt.savefig('./plots/2d_ft_{}.png'.format(iter))
+    figx = plt.figure()
+    arr = mag_norm.squeeze(-1).numpy()[:, H // 2]
+    plt.bar(x=range(-H // 2, H // 2), height=arr)
+    inds_f3 = np.argsort(arr)[::-1][1:3]  # taking 2 peaks after bias
+    inds_f2 = np.argsort(arr)[::-1][3:5]  # taking 2 peaks after bias
+    inds_f1 = np.argsort(arr)[::-1][5:7]  # taking 2 peaks after bias
+    if is_gt:
+        f3_ref = arr[inds_f3]
+        f2_ref = arr[inds_f2]
+        f1_ref = arr[inds_f1]
+    else:
+        wandb.log({'Diff from f#3 peaks': np.sum(np.abs(f3_ref - arr[inds_f3]))})
+        wandb.log({'Diff from f#2 peaks': np.sum(np.abs(f2_ref - arr[inds_f2]))})
+        wandb.log({'Diff from f#1 peaks': np.sum(np.abs(f1_ref - arr[inds_f1]))})
+
+    plt.title('FT - X axis')
+    plt.xlabel('Frequency')
+    plt.xlabel('Amplitude')
+    plt.xlim([-100, 100])
+    title = 'GT - X - FT' if is_gt else 'X - FT'
+    plt.title(title)
+    plt.savefig('./plots/ft_x_{}.png'.format(iter))
+    plt.close('all')
+
+

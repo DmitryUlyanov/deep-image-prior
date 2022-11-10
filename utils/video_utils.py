@@ -2,10 +2,9 @@ import cv2
 import numpy as np
 import torch.utils.data
 import random
-from torchvision.transforms import RandomCrop
-
+from PIL import Image
 from utils.denoising_utils import get_noisy_image
-from utils.common_utils import np_to_torch, get_input
+from utils.common_utils import np_to_torch, get_input, crop_image, np_to_pil, pil_to_np
 
 
 def crop_and_resize(img, resize):
@@ -25,13 +24,13 @@ def crop_and_resize(img, resize):
     return img
 
 
-
 def load_image(cap, resize=None):
     _, img = cap.read()
     if not resize is None:
-        img = crop_and_resize(img, resize)
-    img_convert = img.transpose(2, 0, 1)
-    return img_convert.astype(np.float32) / 255
+        img = crop_and_resize(img, resize).transpose(2, 0, 1)
+    else:
+        img = np.array(crop_image(Image.fromarray(img), d=64)).transpose(2, 0, 1)
+    return img.astype(np.float32) / 255
 
 
 def select_frames(input_seq, factor=4):
@@ -57,7 +56,7 @@ class VideoDataset:
         self.images = []
         self.degraded_images = []
         for fid in range(self.n_frames):
-            frame = load_image(cap_video)
+            frame = load_image(cap_video, resize=crop_shape)
             self.images.append(np_to_torch(frame))
             if task == 'denoising':
                 self.degraded_images.append(np_to_torch(get_noisy_image(frame, self.sigma)[-1]))
@@ -67,6 +66,8 @@ class VideoDataset:
         cap_video.release()
         self.images = torch.cat(self.images)
         self.degraded_images = torch.cat(self.degraded_images)
+        if crop_shape is None:
+            crop_shape = self.images[0].shape[-2:]
         self.crop_height = crop_shape[0]
         self.crop_width = crop_shape[1]
         self.batch_list = None
@@ -92,7 +93,7 @@ class VideoDataset:
 
         if self.train is True:
             if task == 'temporal_sr':
-                self.sampled_indices, self.degraded_images_vis = select_frames(self.degraded_images)
+                self.sampled_indices, self.degraded_images_vis = select_frames(self.degraded_images, factor=6)
             else:
                 self.sampled_indices = np.arange(0, self.n_frames)
             # self.n_frames = self.images.shape[0]
@@ -107,7 +108,12 @@ class VideoDataset:
         """
         List all the possible batch permutations
         """
-        self.batch_list = [(i, self.temporal_stride) for i in range(self.n_frames - self.batch_size + 1)]
+        if self.arch_mode == '2d':
+            self.batch_list = [(i, self.temporal_stride) for i in range(0, self.n_frames - self.batch_size + 1,
+                                                                        self.batch_size)]
+        else:
+            self.batch_list = [(i, self.temporal_stride) for i in range(0, self.n_frames - self.batch_size + 1, 1)]
+
         self.n_batches = len(self.batch_list)
         if self.mode == 'random':
             random.shuffle(self.batch_list)
@@ -189,7 +195,7 @@ class VideoDataset:
                                                                   self.freq_dict['n_freqs'] - 1,
                                                                   steps=self.freq_dict['n_freqs'])
         else:
-            self.input = get_input(self.input_depth, self.input_type, (self.org_height, self.org_width),
+            self.input = get_input(self.input_depth, self.input_type, (self.crop_height, self.crop_width),
                                    freq_dict=self.freq_dict).repeat(self.n_frames, 1, 1, 1)
         if self.input_type != 'noise':
             self.add_sequence_positional_encoding()
@@ -216,7 +222,7 @@ class VideoDataset:
         return torch.stack(cropped_inp, dim=0), torch.stack(cropped_gt, dim=0)
 
     def prepare_batch(self, batch_data):
-        if self.train:
+        if self.train and self.arch_mode == '2d':
             batch_data['input_batch'], batch_data['img_noisy_batch'] = self.generate_random_crops(
                 batch_data['input_batch'], batch_data['img_noisy_batch'])
 

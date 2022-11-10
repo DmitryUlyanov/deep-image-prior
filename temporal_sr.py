@@ -47,17 +47,18 @@ vid_dataset = VideoDataset(args.input_vid_path,
                            input_type=INPUT,
                            num_freqs=args.num_freqs,
                            task='temporal_sr',
-                           crop_shape=(192, 384),
-                           batch_size=4,
+                           crop_shape=None,
+                           batch_size=8,
                            arch_mode='2d',
+                           mode='cont',
                            train=True)
 
 vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 input_type=INPUT,
                                 num_freqs=args.num_freqs,
                                 task='temporal_sr',
-                                crop_shape=(192, 384),
-                                batch_size=4,
+                                crop_shape=None,
+                                batch_size=8,
                                 mode='cont',
                                 arch_mode='2d',
                                 train=False)
@@ -129,7 +130,7 @@ i = 0
 
 
 def eval_video(val_dataset, model, epoch):
-    spatial_size = vid_dataset.get_video_dims()
+    spatial_size = vid_dataset.get_cropped_video_dims()
     img_for_video = np.zeros((val_dataset.n_frames, 3, *spatial_size), dtype=np.uint8)
     img_for_psnr = np.zeros((val_dataset.n_frames, 3, *spatial_size), dtype=np.float32)
 
@@ -155,6 +156,11 @@ def eval_video(val_dataset, model, epoch):
                'Checkpoint (FPS=25)'.format(epoch): wandb.Video(img_for_video, fps=25, format='mp4'),
                'Video PSNR': psnr_whole_video},
               commit=True)
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': net.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, 'temporal_sr_checkpoint_{}.pth'.format(epoch))
 
 
 def train_batch(batch_data):
@@ -230,9 +236,9 @@ filename = os.path.basename(args.input_vid_path).split('.')[0]
 run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, vid_dataset.freq_dict['method'],
-                       '3D-PIP'],
-                 name='test_{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                 job_type='test_sample_lr_{}_{}'.format(INPUT, LR),
+                       'PIP'],
+                 name='{}_depth_{}_{}_factor_6_sequential'.format(filename, input_depth, '{}'.format(INPUT)),
+                 job_type='sequential_{}_{}'.format(INPUT, LR),
                  group='Video - Temporal SR',
                  mode='online',
                  save_code=True,
@@ -251,18 +257,23 @@ for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch'):
     batch_cnt = 0
     running_psnr = 0.
     running_loss = 0.
-    # vid_dataset.init_batch_list()
-    batch_data = vid_dataset.sample_next_batch()
-    batch_data = vid_dataset.prepare_batch(batch_data)
-    for j in range(num_iter):
-        optimizer.zero_grad()
-        loss, psnr_lr = train_batch(batch_data)
-        running_loss += loss.item()
-        running_psnr += psnr_lr
-        optimizer.step()
+    vid_dataset.init_batch_list()
+    for batch_cnt in tqdm.tqdm(range(n_batches), desc="Batch", position=1, leave=False):
+        batch_data = vid_dataset.next_batch()
+        # batch_data = vid_dataset.sample_next_batch()
+        # batch_idx = batch_data['batch_idx']
+        batch_data = vid_dataset.prepare_batch(batch_data)
+    # batch_data = vid_dataset.sample_next_batch()
+    # batch_data = vid_dataset.prepare_batch(batch_data)
+        for j in range(num_iter):
+            optimizer.zero_grad()
+            loss, psnr_lr = train_batch(batch_data)
+            running_loss += loss.item()
+            running_psnr += psnr_lr
+            optimizer.step()
 
     # Log metrics for each epoch
-    wandb.log({'epoch loss': running_loss, 'epoch psnr_lr': running_psnr}, commit=False)
+    wandb.log({'epoch loss': running_loss / n_batches, 'epoch psnr_lr': running_psnr / n_batches}, commit=True)
     # log_images(np.array([np_cvt_color(o) for o in out_sequence]), epoch, 'Video-TemporalSR',
     #            commit=False)
 

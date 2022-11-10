@@ -225,42 +225,104 @@ def ssim3D(img1, img2, window_size=11, size_average=True):
     return _ssim_3D(img1, img2, window, window_size, channel, size_average)
 
 
+def avg_psnr(gt, pred):
+    from skimage.metrics import peak_signal_noise_ratio
+    return peak_signal_noise_ratio(gt, pred)
+
+
 def main():
     from utils.video_utils import VideoDataset
-    vid_gt = VideoDataset('./data/videos/blackswan.avi',
+
+    dataset = {
+        'blackswan': {
+            'gt': './data/eval_vid/clean_videos/blackswan.avi',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/blackswan_pip.mp4',
+            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/blackswan.mp4',
+            '3d-dip': ''
+        },
+        'rollerblade': {
+            'gt': './data/eval_vid/clean_videos/rollerblade.avi',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/rollerblade.mp4',
+            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/rollerblade.mp4',
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/rollerblade_3d_dip.mp4'
+        },
+        'tennis(40 frames)': {
+            'gt': './data/eval_vid/clean_videos/tennis.avi',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/tennis_40_frames.mp4',
+            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/tennis.mp4',
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/tennis_3d_dip_12.mp4'
+        },
+        'judo': {
+            'gt': './data/eval_vid/clean_videos/judo.mp4',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/judo.mp4',
+            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/judo.mp4',
+            '3d-dip': ''
+        },
+    }
+    chosen_video = [dataset['rollerblade'], dataset['tennis(40 frames)'], dataset['blackswan'], dataset['judo']][3]
+    vid_gt = VideoDataset(chosen_video['gt'],
                           input_type='noise',
                           num_freqs=8,
                           task='denoising',
-                          crop_shape=(192, 384),
+                          crop_shape=None,
                           batch_size=4,
                           arch_mode='3d',
                           mode='cont')
 
-    vid_denoised = VideoDataset('./data/videos/denoised_videos/blackswan_3d_pip.mp4',
+    vid_denoised = VideoDataset(chosen_video['temp-pip'],
                                 input_type='noise',
                                 num_freqs=8,
                                 task='denoising',
-                                crop_shape=(192, 384),
+                                crop_shape=None,
                                 batch_size=4,
-                                arch_mode='3d',
+                                arch_mode='2d',
                                 mode='cont')
 
-    vid_denoised_frame_by_frame = VideoDataset('./data/videos/denoised_videos/pip_frame_by_frame.mp4',
+    vid_denoised_frame_by_frame = VideoDataset(chosen_video['frame-by-frame'],
                                                input_type='noise',
                                                num_freqs=8,
                                                task='denoising',
-                                               crop_shape=(192, 384),
+                                               crop_shape=None,
                                                batch_size=4,
-                                               arch_mode='3d',
+                                               arch_mode='2d',
                                                mode='cont')
-    gt = vid_gt.get_all_gt().permute(1, 0, 2, 3).unsqueeze(0)[:, :, 1:-2, :, :].cuda()
-    denoised = vid_denoised.get_all_gt().permute(1, 0, 2, 3).unsqueeze(0)[:, :, 1:-3, :, :].cuda()
-    denoised_f_b_f = vid_denoised_frame_by_frame.get_all_gt().permute(1, 0, 2, 3).unsqueeze(0)[:, :, 1:-2, :, :].cuda()
+
+    # vid_denoised_3d_dip = VideoDataset(chosen_video['3d-dip'],
+    #                                    input_type='noise',
+    #                                    num_freqs=8,
+    #                                    task='denoising',
+    #                                    crop_shape=None,
+    #                                    batch_size=4,
+    #                                    arch_mode='2d',
+    #                                    mode='cont')
+
+    gt = vid_gt.get_all_gt().cuda()
+    denoised = vid_denoised.get_all_gt().cuda()
+    denoised_f_b_f = vid_denoised_frame_by_frame.get_all_gt().cuda()
+    # denoised_3d_dip = vid_denoised_3d_dip.get_all_gt().cuda()
+
+    # remove edges  | rollerblade: 5 | tennis: 0 | Blackswan: 2 | Judo: 4
+    remove_edges_start_index = 4
+    if remove_edges_start_index > 0:
+        gt = gt[:-remove_edges_start_index]
+        denoised_f_b_f = denoised_f_b_f[:-remove_edges_start_index]
+        # denoised_3d_dip = denoised_3d_dip[:-remove_edges_start_index]
+
+    denoised = denoised[:-(remove_edges_start_index + 1)]
 
     ssim_loss = SSIM3D(window_size=11)
-    print(ssim_loss(gt, gt))
-    print(ssim_loss(gt, denoised))
-    print(ssim_loss(gt, denoised_f_b_f))
+    print('3D-SSIM')
+    print('temp-pip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+                                              denoised.permute(1, 0, 2, 3).unsqueeze(0))))
+    print('frame-by-frame: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+                                                    denoised_f_b_f.permute(1, 0, 2, 3).unsqueeze(0))))
+    # print('3d-dip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+    #                                         denoised_3d_dip.permute(1, 0, 2, 3).unsqueeze(0))))
+
+    print('Avg. PSNR')
+    print('temp-pip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised.cpu().numpy())))
+    print('frame-by-frame: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_f_b_f.cpu().numpy())))
+    # print('3d-dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_3d_dip.cpu().numpy())))
 
 
 if __name__ == '__main__':
