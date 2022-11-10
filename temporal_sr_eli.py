@@ -138,7 +138,9 @@ def eval_video(val_dataset, model, epoch):
             out_rgb = np.array([np_cvt_color(o) for o in out_np])
             img_for_video[batch_data['cur_batch']] = (out_rgb * 255).astype(np.uint8)
 
-    psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True), img_for_psnr)
+    ignore_start_ind = vid_dataset_eval.n_batches * vid_dataset_eval.batch_size
+    psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True)[:ignore_start_ind],
+                                    img_for_psnr[:ignore_start_ind])
 
     writer = skvideo.io.FFmpegWriter("outputvideo_{}_psnr_{}.mp4".format(epoch, psnr_whole_video))
     for i in range(val_dataset.n_frames):
