@@ -175,7 +175,7 @@ def train_batch(batch_data):
     total_loss = (mse(out, batch_data['img_noisy_batch']))
     total_loss.backward()
 
-    out_lr_np = out.detach().cpu().numpy()fix
+    out_lr_np = out.detach().cpu().numpy()
     psnr_lr = compare_psnr(batch_data['img_noisy_batch'].cpu().numpy(), out_lr_np)
 
     return total_loss, psnr_lr
