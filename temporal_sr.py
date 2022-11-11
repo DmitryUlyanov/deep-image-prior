@@ -1,13 +1,12 @@
 from __future__ import print_function
 
-import glob
 import random
 
-from models import *
-from models.skip_3d import skip_3d, skip_3d_mlp, skip_3d_mlp_enc_inp
+from models import skip
+from models.skip_3d import skip_3d
 from utils.denoising_utils import *
 from utils.wandb_utils import *
-from utils.video_utils import VideoDataset, select_frames
+from utils.video_utils import VideoDataset
 from utils.common_utils import np_cvt_color
 import torch.optim
 import matplotlib.pyplot as plt
@@ -17,7 +16,6 @@ import wandb
 import argparse
 import numpy as np
 import tqdm
-# from skimage.measure import compare_psnr
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 
 torch.backends.cudnn.enabled = True
@@ -48,7 +46,8 @@ vid_dataset = VideoDataset(args.input_vid_path,
                            num_freqs=args.num_freqs,
                            task='temporal_sr',
                            crop_shape=None,
-                           batch_size=8,
+                           batch_size=6,
+                           temp_stride=2,
                            arch_mode='2d',
                            mode='cont',
                            train=True)
@@ -58,7 +57,8 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 num_freqs=args.num_freqs,
                                 task='temporal_sr',
                                 crop_shape=None,
-                                batch_size=8,
+                                batch_size=6,
+                                temp_stride=1,
                                 mode='cont',
                                 arch_mode='2d',
                                 train=False)
@@ -74,8 +74,8 @@ LR = args.learning_rate
 
 OPTIMIZER = 'adam'  # 'LBFGS'
 exp_weight = 0.99
-show_every = 3000
-n_epochs = 25000
+show_every = 500
+n_epochs = 8000
 num_iter = 1
 figsize = 4
 
@@ -93,16 +93,6 @@ if INPUT == 'noise':
                   act_fun='LeakyReLU').type(dtype)
 else:
     input_depth = args.num_freqs * 6  # 4 * F for spatial encoding, 4 * F for temporal encoding
-    # net = skip_3d_mlp(input_depth, 3,
-    #                   num_channels_down=[256, 256, 256, 256, 256, 256],
-    #                   num_channels_up=[256, 256, 256, 256, 256, 256],
-    #                   num_channels_skip=[8, 8, 8, 8, 8, 8],
-    #                   filter_size_up=(1, 1, 1),
-    #                   filter_size_down=(1, 1, 1),
-    #                   filter_size_skip=(1, 1, 1),
-    #                   downsample_mode='stride',
-    #                   need1x1_up=True, need_sigmoid=True, need_bias=True, pad='reflection',
-    #                   act_fun='LeakyReLU').type(dtype)
     net = skip(input_depth, 3,
                num_channels_down=[256, 256, 256, 256, 256, 256],
                num_channels_up=[256, 256, 256, 256, 256, 256],
@@ -180,40 +170,13 @@ def train_batch(batch_data):
 
     net_out = net(net_input)
     out = net_out.squeeze(0)  # N x 3 x H x W
-    # out_lr = select_frames(out)
-    out_lr = out
-    # out_hr = out
-    total_loss = mse(out_lr, batch_data['img_noisy_batch'])
+
+    total_loss = (mse(out, batch_data['img_noisy_batch']))
     total_loss.backward()
 
-    # out_hr_np = out_hr.detach().cpu().numpy()
-    out_lr_np = out_lr.detach().cpu().numpy()
+    out_lr_np = out.detach().cpu().numpy()
     psnr_lr = compare_psnr(batch_data['img_noisy_batch'].cpu().numpy(), out_lr_np)
-    # psnr_hr = compare_psnr(batch_data['gt_batch'].numpy(), out_hr_np)
 
-    # wandb.log({'batch loss': total_loss.item(), 'psnr_lr': psnr_lr}, commit=True)
-    # print('Iteration %05d    Loss %f   PSNR_noisy: %f   PSRN_gt: %f' % (
-    #     j, total_loss.item(), psrn_noisy, psrn_gt))
-    # psnr_gt_list.append(psrn_gt)
-    # wandb.log({'psnr_gt': psrn_gt, 'psnr_noisy': psrn_noisy}, commit=False)
-    # if psrn_gt > best_psnr_gt:
-    #     best_psnr_gt = psrn_gt
-    #     best_img = np.copy(out_np)
-    #     best_iter = i
-    # Backtracking
-    # if i % show_every:
-    #     if psrn_noisy - psrn_noisy_last < -2:
-    #         print('Falling back to previous checkpoint.')
-    #
-    #         for new_param, net_param in zip(last_net, net.parameters()):
-    #             net_param.data.copy_(new_param.cuda())
-    #
-    #         return total_loss * 0
-    #     else:
-    #         last_net = [x.detach().cpu() for x in net.parameters()]
-    #         psrn_noisy_last = psrn_noisy
-
-    # wandb.log({'training loss': total_loss.item()}, commit=True)
     return total_loss, psnr_lr
 
 
@@ -262,11 +225,7 @@ for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch'):
     vid_dataset.init_batch_list()
     for batch_cnt in tqdm.tqdm(range(n_batches), desc="Batch", position=1, leave=False):
         batch_data = vid_dataset.next_batch()
-        # batch_data = vid_dataset.sample_next_batch()
-        # batch_idx = batch_data['batch_idx']
         batch_data = vid_dataset.prepare_batch(batch_data)
-    # batch_data = vid_dataset.sample_next_batch()
-    # batch_data = vid_dataset.prepare_batch(batch_data)
         for j in range(num_iter):
             optimizer.zero_grad()
             loss, psnr_lr = train_batch(batch_data)

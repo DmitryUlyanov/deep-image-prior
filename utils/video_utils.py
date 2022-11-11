@@ -93,7 +93,7 @@ class VideoDataset:
 
         if self.train is True:
             if task == 'temporal_sr':
-                self.sampled_indices, self.degraded_images_vis = select_frames(self.degraded_images, factor=8)
+                self.sampled_indices, self.degraded_images_vis = select_frames(self.degraded_images, factor=2)
             else:
                 self.sampled_indices = np.arange(0, self.n_frames)
             # self.n_frames = self.images.shape[0]
@@ -110,7 +110,7 @@ class VideoDataset:
         """
         if self.arch_mode == '2d':
             self.batch_list = [(i, self.temporal_stride) for i in range(0, self.n_frames - self.batch_size + 1,
-                                                                        self.batch_size)]
+                                                                        self.batch_size * self.temporal_stride)]
         else:
             self.batch_list = [(i, self.temporal_stride) for i in range(0, self.n_frames - self.batch_size + 1, 1)]
 
@@ -177,7 +177,7 @@ class VideoDataset:
         return batch_data
 
     def add_sequence_positional_encoding(self):
-        freqs = self.freq_dict['base'] ** torch.linspace(0., self.freq_dict['n_freqs']-1,
+        freqs = self.freq_dict['base'] ** torch.linspace(0., self.freq_dict['n_freqs']-3,
                                                          steps=self.freq_dict['n_freqs'])
         if self.input_type == 'infer_freqs':
             self.input = torch.cat([self.input, freqs], dim=0)
@@ -205,6 +205,7 @@ class VideoDataset:
 
     def generate_random_crops(self, inp, gt):
         B, _, H, W = inp.shape
+        Bgt, _, Hgt, Wgt = gt.shape
         Ch, Cw = self.crop_height, self.crop_width
         if Ch == H:
             top = [0] * B
@@ -217,6 +218,7 @@ class VideoDataset:
         cropped_inp, cropped_gt = [], []
         for i in range(B):
             cropped_inp.append(inp[i, :, top[i]:top[i]+Ch, left[i]:left[i]+Cw])
+        for i in range(Bgt):
             cropped_gt.append(gt[i, :, top[i]:top[i] + Ch, left[i]:left[i] + Cw])
 
         return torch.stack(cropped_inp, dim=0), torch.stack(cropped_gt, dim=0)

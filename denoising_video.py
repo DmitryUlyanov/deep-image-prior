@@ -122,10 +122,8 @@ OPTIMIZER = 'adam'  # 'LBFGS'
 exp_weight = 0.99
 if mode == '2d':
     show_every = 300  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
-    n_epochs = 15000  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
-else:
-    show_every = 300
-    n_epochs = 5000
+    n_epochs = 5000  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
+
 
 num_iter = 1
 figsize = 4
@@ -220,6 +218,7 @@ optimizer = torch.optim.Adam(p, lr=LR)
 log_config = {
     "learning_rate": LR,
     "iteration per batch": num_iter,
+    'Epochs': n_epochs,
     'optimizer': OPTIMIZER,
     'loss': type(mse).__name__,
     'input depth': input_depth,

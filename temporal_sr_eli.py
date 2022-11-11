@@ -1,7 +1,6 @@
 from __future__ import print_function
 
 import random
-import skvideo.io
 
 from models import skip
 from models.skip_3d import skip_3d
@@ -45,7 +44,8 @@ vid_dataset = VideoDataset(args.input_vid_path,
                            num_freqs=args.num_freqs,
                            task='temporal_sr',
                            crop_shape=None,
-                           batch_size=8,
+                           batch_size=6,
+                           temp_stride=2,
                            arch_mode='2d',
                            mode='cont',
                            train=True)
@@ -55,7 +55,8 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 num_freqs=args.num_freqs,
                                 task='temporal_sr',
                                 crop_shape=None,
-                                batch_size=8,
+                                batch_size=6,
+                                temp_stride=1,
                                 mode='cont',
                                 arch_mode='2d',
                                 train=False)
@@ -71,8 +72,8 @@ LR = args.learning_rate
 
 OPTIMIZER = 'adam'  # 'LBFGS'
 exp_weight = 0.99
-show_every = 5000
-n_epochs = 5000
+show_every = 500
+n_epochs = 8000
 num_iter = 1
 figsize = 4
 
@@ -142,17 +143,17 @@ def eval_video(val_dataset, model, epoch):
     psnr_whole_video = compare_psnr(val_dataset.get_all_gt(numpy=True)[:ignore_start_ind],
                                     img_for_psnr[:ignore_start_ind])
 
-    writer = skvideo.io.FFmpegWriter("outputvideo_{}_psnr_{}.mp4".format(epoch, psnr_whole_video))
+    video_name = os.path.basename(args.input_vid_path[:-len('.avi')])
+    os.makedirs('output/' + video_name, exist_ok=True)
     for i in range(val_dataset.n_frames):
-        writer.writeFrame(img_for_video[i, :, :, :])
-        plt.imsave('out_frame_{}_{}.png'.format(epoch, i), img_for_video[i, :, :, :].transpose(1, 2, 0))
-    writer.close()
+        plt.imsave('output/{}/out_frame_{}_{}.png'.format(video_name, epoch, i),
+                   img_for_video[i, :, :, :].transpose(1, 2, 0))
 
     torch.save({
         'epoch': epoch,
         'model_state_dict': net.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-    }, 'temporal_sr_checkpoint_{}.pth'.format(epoch))
+    }, 'output/{}/temporal_sr_checkpoint_{}_{}.pth'.format(video_name, epoch, psnr_whole_video))
 
 
 def train_batch(batch_data):
@@ -170,12 +171,11 @@ def train_batch(batch_data):
 
     net_out = net(net_input)
     out = net_out.squeeze(0)  # N x 3 x H x W
-    out_lr = out
-    total_loss = mse(out_lr, batch_data['img_noisy_batch'])
+
+    total_loss = (mse(out, batch_data['img_noisy_batch']))
     total_loss.backward()
 
-    # out_hr_np = out_hr.detach().cpu().numpy()
-    out_lr_np = out_lr.detach().cpu().numpy()
+    out_lr_np = out.detach().cpu().numpy()fix
     psnr_lr = compare_psnr(batch_data['img_noisy_batch'].cpu().numpy(), out_lr_np)
 
     return total_loss, psnr_lr
