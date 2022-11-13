@@ -89,12 +89,15 @@ def visualize_fourier(img, iter, is_gt=False):
         wandb.log({'Diff from f#2 peaks': np.sum(np.abs(f2_ref - arr[inds_f2]))})
         wandb.log({'Diff from f#1 peaks': np.sum(np.abs(f1_ref - arr[inds_f1]))})
 
-    plt.title('FT - X axis')
-    plt.xlabel('Frequency')
-    plt.xlabel('Amplitude')
-    plt.xlim([-100, 100])
-    title = 'GT - X - FT' if is_gt else 'X - FT'
-    plt.title(title)
+    ax_1d = plt.subplot()
+    ax_1d.bar(x=range(-H // 2, H // 2), height=arr, color='b')
+    ax_1d.set_xlim([-50, 50])
+    ticks = ax_1d.get_xticks()
+    ax_1d.set_xticklabels([t / 2 for t in ticks])
+    ax_1d.set_xlabel('Frequency')
+    ax_1d.set_ylabel('Amplitude')
+    title = 'GT - FT' if is_gt else 'FT'
+    ax_1d.set_title(title)
     plt.savefig('./plots/ft_x_{}.png'.format(iter))
     plt.close('all')
 

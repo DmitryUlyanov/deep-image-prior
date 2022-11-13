@@ -31,7 +31,7 @@ def load_LR_HR_imgs_sr(fname, imsize, factor, enforse_div32=None):
         
     # For comparison with GT
     if enforse_div32 == 'CROP':
-        new_size = (img_orig_pil.size[0] - img_orig_pil.size[0] % 32, 
+        new_size = (img_orig_pil.size[0] - img_orig_pil.size[0] % 32,
                     img_orig_pil.size[1] - img_orig_pil.size[1] % 32)
 
         bbox = [
@@ -65,6 +65,56 @@ def load_LR_HR_imgs_sr(fname, imsize, factor, enforse_div32=None):
                 'HR_np': img_HR_np
            }
 
+
+def load_LR_HR_imgs_sr_div_64(fname, imsize, factor, enforse_div32=None):
+    '''Loads an image, resizes it, center crops and downscales.
+
+    Args:
+        fname: path to the image
+        imsize: new size for the image, -1 for no resizing
+        factor: downscaling factor
+        enforse_div32: if 'CROP' center crops an image, so that its dimensions are divisible by 32.
+    '''
+    img_orig_pil, img_orig_np = get_image(fname, -1)
+
+    if imsize != -1:
+        img_orig_pil, img_orig_np = get_image(fname, imsize)
+
+    # For comparison with GT
+    if enforse_div32 == 'CROP':
+        new_size = (img_orig_pil.size[0] - img_orig_pil.size[0] % 64,
+                    img_orig_pil.size[1] - img_orig_pil.size[1] % 64)
+
+        bbox = [
+            (img_orig_pil.size[0] - new_size[0]) / 2,
+            (img_orig_pil.size[1] - new_size[1]) / 2,
+            (img_orig_pil.size[0] + new_size[0]) / 2,
+            (img_orig_pil.size[1] + new_size[1]) / 2,
+        ]
+
+        img_HR_pil = img_orig_pil.crop(bbox)
+        img_HR_np = pil_to_np(img_HR_pil)
+    else:
+        img_HR_pil, img_HR_np = img_orig_pil, img_orig_np
+
+    LR_size = [
+        img_HR_pil.size[0] // factor,
+        img_HR_pil.size[1] // factor
+    ]
+
+    img_LR_pil = img_HR_pil.resize(LR_size, Image.ANTIALIAS)
+    img_LR_np = pil_to_np(img_LR_pil)
+
+    print('HR and LR resolutions: %s, %s' % (str(img_HR_pil.size), str(img_LR_pil.size)))
+
+    return {
+        'orig_pil': img_orig_pil,
+        'orig_np': img_orig_np,
+        'LR_pil': img_LR_pil,
+        'LR_np': img_LR_np,
+        'HR_pil': img_HR_pil,
+        'HR_np': img_HR_np
+    }
 
 def get_baselines(img_LR_pil, img_HR_pil):
     '''Gets `bicubic`, sharpened bicubic and `nearest` baselines.'''

@@ -37,15 +37,18 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 imsize = -1
 PLOT = True
-
+mode = ['2d', '3d'][0]
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
+spatial_factor = 1
+temporal_factor = 2
 vid_dataset = VideoDataset(args.input_vid_path,
                            input_type=INPUT,
                            num_freqs=args.num_freqs,
                            task='temporal_sr',
                            crop_shape=None,
                            batch_size=6,
-                           temp_stride=2,
+                           temp_stride=temporal_factor,
+                           spatial_factor=spatial_factor,
                            arch_mode='2d',
                            mode='cont',
                            train=True)
@@ -56,7 +59,8 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 task='temporal_sr',
                                 crop_shape=None,
                                 batch_size=6,
-                                temp_stride=1,
+                                temp_stride=temporal_factor,
+                                spatial_factor=spatial_factor,
                                 mode='cont',
                                 arch_mode='2d',
                                 train=False)
@@ -170,13 +174,12 @@ def train_batch(batch_data):
         net_input = net_input_saved
 
     net_out = net(net_input)
-    out = net_out.squeeze(0)  # N x 3 x H x W
 
-    total_loss = (mse(out, batch_data['img_noisy_batch']))
+    total_loss = (mse(net_out, batch_data['img_degraded_batch']))
     total_loss.backward()
 
-    out_lr_np = out.detach().cpu().numpy()
-    psnr_lr = compare_psnr(batch_data['img_noisy_batch'].cpu().numpy(), out_lr_np)
+    out_lr_np = net_out.detach().cpu().numpy()
+    psnr_lr = compare_psnr(batch_data['img_degraded_batch'].cpu().numpy(), out_lr_np)
 
     return total_loss, psnr_lr
 

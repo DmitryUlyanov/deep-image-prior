@@ -8,7 +8,7 @@ import numpy as np
 from math import exp
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 
 class r2p1d18_loss(nn.Module):
@@ -238,28 +238,39 @@ def main():
             'gt': './data/eval_vid/clean_videos/blackswan.avi',
             'temp-pip': './data/eval_vid/denoised_videos/pip/blackswan_pip.mp4',
             'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/blackswan.mp4',
-            '3d-dip': ''
+            '3d-dip': '',
+            'ignore_index': 2
         },
         'rollerblade': {
             'gt': './data/eval_vid/clean_videos/rollerblade.avi',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/rollerblade.mp4',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/rollerblade_5000.mp4',
             'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/rollerblade.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/rollerblade_3d_dip.mp4'
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/rollerblade_3d_dip_10.mp4',
+            'ignore_index': 5
         },
         'tennis(40 frames)': {
             'gt': './data/eval_vid/clean_videos/tennis.avi',
             'temp-pip': './data/eval_vid/denoised_videos/pip/tennis_40_frames.mp4',
             'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/tennis.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/tennis_3d_dip_12.mp4'
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/tennis_3d_dip_12.mp4',
+            'ignore_index': 0
         },
         'judo': {
             'gt': './data/eval_vid/clean_videos/judo.mp4',
             'temp-pip': './data/eval_vid/denoised_videos/pip/judo.mp4',
             'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/judo.mp4',
-            '3d-dip': ''
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/judo_3d_dip_10.mp4',
+            'ignore_index': 4
+        },
+        'dog': {
+            'gt': './data/eval_vid/clean_videos/dog.mp4',
+            'temp-pip': './data/eval_vid/denoised_videos/pip/dog.mp4',
+            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/dog.mp4',
+            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/dog_3d_dip_10.mp4',
+            'ignore_index': 1
         },
     }
-    chosen_video = [dataset['rollerblade'], dataset['tennis(40 frames)'], dataset['blackswan'], dataset['judo']][3]
+    chosen_video = [dataset['rollerblade'], dataset['dog'], dataset['blackswan'], dataset['judo']][3]
     vid_gt = VideoDataset(chosen_video['gt'],
                           input_type='noise',
                           num_freqs=8,
@@ -287,28 +298,30 @@ def main():
                                                arch_mode='2d',
                                                mode='cont')
 
-    # vid_denoised_3d_dip = VideoDataset(chosen_video['3d-dip'],
-    #                                    input_type='noise',
-    #                                    num_freqs=8,
-    #                                    task='denoising',
-    #                                    crop_shape=None,
-    #                                    batch_size=4,
-    #                                    arch_mode='2d',
-    #                                    mode='cont')
+    vid_denoised_3d_dip = VideoDataset(chosen_video['3d-dip'],
+                                       input_type='noise',
+                                       num_freqs=8,
+                                       task='denoising',
+                                       crop_shape=None,
+                                       batch_size=4,
+                                       arch_mode='2d',
+                                       mode='cont')
 
     gt = vid_gt.get_all_gt().cuda()
     denoised = vid_denoised.get_all_gt().cuda()
     denoised_f_b_f = vid_denoised_frame_by_frame.get_all_gt().cuda()
-    # denoised_3d_dip = vid_denoised_3d_dip.get_all_gt().cuda()
+    denoised_3d_dip = vid_denoised_3d_dip.get_all_gt().cuda()
 
-    # remove edges  | rollerblade: 5 | tennis: 0 | Blackswan: 2 | Judo: 4
-    remove_edges_start_index = 4
-    if remove_edges_start_index > 0:
-        gt = gt[:-remove_edges_start_index]
-        denoised_f_b_f = denoised_f_b_f[:-remove_edges_start_index]
-        # denoised_3d_dip = denoised_3d_dip[:-remove_edges_start_index]
+    # remove edges  | rollerblade: 5 | dog: 1 | Blackswan: 2 | Judo: 4
+    remove_edges_start_index = chosen_video['ignore_index']
+    if 0 < remove_edges_start_index < 2:
+        remove_edges_start_index = 2
+    elif remove_edges_start_index > 2:
+        gt = gt[2:-remove_edges_start_index]
+        denoised_f_b_f = denoised_f_b_f[2:-remove_edges_start_index]
+        denoised_3d_dip = denoised_3d_dip[2:-remove_edges_start_index]
 
-    denoised = denoised[:-(remove_edges_start_index + 1)]
+    denoised = denoised[2:-(remove_edges_start_index + 1)]
 
     ssim_loss = SSIM3D(window_size=11)
     print('3D-SSIM')
@@ -316,13 +329,13 @@ def main():
                                               denoised.permute(1, 0, 2, 3).unsqueeze(0))))
     print('frame-by-frame: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
                                                     denoised_f_b_f.permute(1, 0, 2, 3).unsqueeze(0))))
-    # print('3d-dip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
-    #                                         denoised_3d_dip.permute(1, 0, 2, 3).unsqueeze(0))))
+    print('3d-dip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+                                            denoised_3d_dip.permute(1, 0, 2, 3).unsqueeze(0))))
 
     print('Avg. PSNR')
     print('temp-pip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised.cpu().numpy())))
     print('frame-by-frame: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_f_b_f.cpu().numpy())))
-    # print('3d-dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_3d_dip.cpu().numpy())))
+    print('3d-dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_3d_dip.cpu().numpy())))
 
 
 if __name__ == '__main__':

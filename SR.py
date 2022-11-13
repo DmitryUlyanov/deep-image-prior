@@ -46,21 +46,27 @@ show_every = 100
 # To produce images from the paper we took *_GT.png images from LapSRN viewer for corresponding factor,
 # e.g. x4/zebra_GT.png for factor=4, and x8/zebra_GT.png for factor=8
 
-if args.index != -1:
-    fnames = ['data/sr/zebra_GT.png', 'data/denoising/F16_GT.png', 'data/inpainting/kate.png']
-    fnames_list = [fnames[args.index]]
-    dataset_tag = 'single_img'
-else:
+if args.index == -1:
     dataset_path = 'data/sr_datasets/Set14/images'
     fnames_list = sorted(glob.glob(dataset_path + '/*.*'))
     fnames = fnames_list
     if args.dataset_index != -1:
-        fnames_list = fnames_list[args.dataset_index:args.dataset_index+1]
+        fnames_list = fnames_list[args.dataset_index:args.dataset_index + 1]
     dataset_tag = dataset_path.split('/')[-2]
+elif args.index == -2:
+    base_path = './data/videos/tennis/'
+    save_dir = 'plots/{}/sr'.format(base_path.split('/')[-1])
+    os.makedirs(save_dir, exist_ok=True)
+    fnames = sorted(glob.glob(base_path + '/*.png'))
+    fnames_list = fnames
+else:
+    fnames = ['data/sr/zebra_GT.png', 'data/denoising/F16_GT.png', 'data/inpainting/kate.png']
+    fnames_list = [fnames[args.index]]
+    dataset_tag = 'single_img'
 
 # Starts here
 for path_to_image in fnames_list:
-    imgs = load_LR_HR_imgs_sr(path_to_image, imsize, factor, enforse_div32)
+    imgs = load_LR_HR_imgs_sr_div_64(path_to_image, imsize, factor, enforse_div32)
 
     imgs['bicubic_np'], imgs['sharp_np'], imgs['nearest_np'] = get_baselines(imgs['LR_pil'], imgs['HR_pil'])
     output_depth = imgs['LR_np'].shape[0]
@@ -113,7 +119,7 @@ for path_to_image in fnames_list:
                   skip_n11=4,
                   num_scales=5,
                   upsample_mode='bilinear').type(dtype)
-    net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
+    # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
     # net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
 
     # Losses
@@ -210,11 +216,11 @@ for path_to_image in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                            dataset_tag, 'freq_lim: {}'.format(args.freq_lim), 'sr', '1x1'],
+                            'freq_lim: {}'.format(args.freq_lim), 'sr'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='DIP_MLP_1x1_sr_{}_{}_{}_freq_lim_{}_num_freqs_{}'.format(dataset_tag, INPUT, LR, args.freq_lim,
+                     job_type='tennis_{}_{}_freq_lim_{}_num_freqs_{}'.format(INPUT, LR, args.freq_lim,
                                                                                  args.num_freqs),
-                     group='Super-Resolution - Dataset x{}'.format(factor),
+                     group='Super-Resolution - video baseline',
                      mode='online',
                      save_code=True,
                      config=log_config,
@@ -286,6 +292,9 @@ for path_to_image in fnames_list:
     wandb.log({'PSNR-Y': psnr_y}, commit=True)
     wandb.log({'training_time': t_training}, commit=False)
     print('Training time: {}'.format(t_training))
+    if args.index == -2:
+        img_final_pil = np_to_pil(np.clip(out_HR_np, 0, 1))
+        img_final_pil.save(os.path.join(save_dir, filename + '.png'))
 
     fig, axes = plt.subplots(1, 2)
     axes[0].plot([h[0] for h in psnr_history])

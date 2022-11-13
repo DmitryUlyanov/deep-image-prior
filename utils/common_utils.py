@@ -181,7 +181,8 @@ def get_input(input_depth, method, spatial_size, noise_type='u', var=1. / 10, fr
                                             scale_factor=4)
             net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
         elif freq_dict['method'] == 'log':
-            freqs = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
+            # freqs = freq_dict['base'] ** torch.linspace(0., freq_dict['n_freqs'] - 1, steps=freq_dict['n_freqs'])
+            freqs = torch.pi * freq_dict['base'] ** torch.linspace(0., 4, steps=freq_dict['n_freqs'])
             net_input = generate_fourier_feature_maps(freqs, spatial_size, only_cosine=freq_dict['cosine_only'])
 
     elif method == 'infer_freqs':

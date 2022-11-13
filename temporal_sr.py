@@ -39,15 +39,18 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 imsize = -1
 PLOT = True
-
+mode = ['2d', '3d'][0]
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
+spatial_factor = 1
+temporal_factor = 2
 vid_dataset = VideoDataset(args.input_vid_path,
                            input_type=INPUT,
                            num_freqs=args.num_freqs,
                            task='temporal_sr',
                            crop_shape=None,
                            batch_size=6,
-                           temp_stride=2,
+                           temp_stride=temporal_factor,
+                           spatial_factor=spatial_factor,
                            arch_mode='2d',
                            mode='cont',
                            train=True)
@@ -58,7 +61,8 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 task='temporal_sr',
                                 crop_shape=None,
                                 batch_size=6,
-                                temp_stride=1,
+                                temp_stride=temporal_factor,
+                                spatial_factor=spatial_factor,
                                 mode='cont',
                                 arch_mode='2d',
                                 train=False)
@@ -92,7 +96,8 @@ if INPUT == 'noise':
                   need1x1_up=True, need_sigmoid=True, need_bias=True, pad='reflection',
                   act_fun='LeakyReLU').type(dtype)
 else:
-    input_depth = args.num_freqs * 6  # 4 * F for spatial encoding, 4 * F for temporal encoding
+    input_depth = args.num_freqs * 6  # 4 * F for spatial encoding, 2 * F for temporal encoding
+    # input_depth = args.num_freqs * 4 + 1  # 4 * F for spatial encoding,
     net = skip(input_depth, 3,
                num_channels_down=[256, 256, 256, 256, 256, 256],
                num_channels_up=[256, 256, 256, 256, 256, 256],
@@ -148,6 +153,13 @@ def eval_video(val_dataset, model, epoch):
                'Checkpoint (FPS=25)'.format(epoch): wandb.Video(img_for_video, fps=25, format='mp4'),
                'Video PSNR': psnr_whole_video},
               commit=True)
+
+    video_name = os.path.basename(args.input_vid_path[:-len('.avi')])
+    os.makedirs('output/' + video_name, exist_ok=True)
+    for i in range(val_dataset.n_frames):
+        plt.imsave('output/{}/out_frame_{}_{}.png'.format(video_name, epoch, i),
+                   img_for_video[i, :, :, :].transpose(1, 2, 0))
+
     torch.save({
         'epoch': epoch,
         'model_state_dict': net.state_dict(),
@@ -169,13 +181,12 @@ def train_batch(batch_data):
         net_input = net_input_saved
 
     net_out = net(net_input)
-    out = net_out.squeeze(0)  # N x 3 x H x W
 
-    total_loss = (mse(out, batch_data['img_noisy_batch']))
+    total_loss = (mse(net_out, batch_data['img_degraded_batch']))
     total_loss.backward()
 
-    out_lr_np = out.detach().cpu().numpy()
-    psnr_lr = compare_psnr(batch_data['img_noisy_batch'].cpu().numpy(), out_lr_np)
+    out_lr_np = net_out.detach().cpu().numpy()
+    psnr_lr = compare_psnr(batch_data['img_degraded_batch'].cpu().numpy(), out_lr_np)
 
     return total_loss, psnr_lr
 
@@ -202,7 +213,8 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, vid_dataset.freq_dict['method'],
                        'PIP'],
-                 name='{}_depth_{}_{}_factor_6_sequential'.format(filename, input_depth, '{}'.format(INPUT)),
+                 name='{}_depth_{}_{}_{}_spatial_factor_{}_temporal_factor_{}'.format(
+                     filename, input_depth, '{}'.format(INPUT), mode, spatial_factor, temporal_factor),
                  job_type='sequential_{}_{}'.format(INPUT, LR),
                  group='Video - Temporal SR',
                  mode='online',
@@ -218,6 +230,9 @@ wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)
 print(net)
 n_batches = vid_dataset.n_batches
 
+ckpt = torch.load('/mnt5/nimrod/deep-image-prior/temporal_sr_checkpoint_2000.pth')
+net.load_state_dict(ckpt['model_state_dict'])
+eval_video(vid_dataset_eval, net, 0)
 for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch'):
     batch_cnt = 0
     running_psnr = 0.

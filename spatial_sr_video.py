@@ -6,8 +6,9 @@ import random
 from models import *
 from models.skip_3d import skip_3d, skip_3d_mlp
 from utils.denoising_utils import *
+from utils.sr_utils import *
 from utils.wandb_utils import *
-from utils.video_utils import VideoDataset
+from utils.video_utils import VideoDataset, DownsamplingSequence
 from utils.common_utils import np_cvt_color
 import torch.optim
 import matplotlib.pyplot as plt
@@ -66,7 +67,7 @@ def eval_video(val_dataset, model, epoch):
 
             out_np = out.detach().cpu().numpy()
 
-            img_for_psnr[batch_data['cur_batch']] = out_np
+            img_for_psnr[batch_data['cur_batch']] = np.array([put_in_center(o, spatial_size) for o in out_np])
             out_rgb = np.array([np_cvt_color(o) for o in out_np])
             img_for_video[batch_data['cur_batch']] = (out_rgb * 255).astype(np.uint8)
 
@@ -85,28 +86,32 @@ def eval_video(val_dataset, model, epoch):
 
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
+spatial_factor = 4
+temporal_factor = 1
 vid_dataset = VideoDataset(args.input_vid_path,
                            input_type=INPUT,
                            num_freqs=args.num_freqs,
-                           task='denoising',
+                           task='spatial_sr',
                            sigma=sigma,
                            crop_shape=None,
                            batch_size=6,
                            arch_mode=mode,
                            train=True,
-                           temp_stride=1,
+                           temp_stride=temporal_factor,
+                           spatial_factor=spatial_factor,
                            mode='cont')
 
 
 vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 input_type=INPUT,
                                 num_freqs=args.num_freqs,
-                                task='denoising',
+                                task='spatial_sr',
                                 crop_shape=None,
                                 batch_size=6,
                                 arch_mode=mode,
                                 train=False,
-                                temp_stride=1,
+                                temp_stride=temporal_factor,
+                                spatial_factor=spatial_factor,
                                 mode='cont')
 pad = 'reflection'
 if INPUT == 'infer_freqs':
@@ -200,17 +205,18 @@ def train_batch(batch_data):
         out = net_out.squeeze(0).transpose(0, 1)  # N x 3 x H x W
     else:
         out = net_out
-
-    total_loss = mse(out, batch_data['img_degraded_batch'])
+    out_lr = downsampler.downsmaple_sequence(out)
+    total_loss = mse(out_lr, batch_data['img_degraded_batch'])
     # total_loss = total_loss / accum_iter
     total_loss.backward()
 
-    out_np = out.detach().cpu().numpy()
-    psrn_noisy = compare_psnr(batch_data['img_degraded_batch'].cpu().numpy(), out_np)
-    psrn_gt = compare_psnr(batch_data['gt_batch'].numpy(), out_np)
+    out_lr_np = out_lr.detach().cpu().numpy()
+    out_hr_np = out.detach().cpu().numpy()
+    psrn_noisy = compare_psnr(batch_data['img_degraded_batch'].cpu().numpy(), out_lr_np)
+    psrn_gt = compare_psnr(batch_data['gt_batch'].numpy(), out_hr_np)
 
     wandb.log({'batch loss': total_loss.item(), 'psnr_noisy': psrn_noisy, 'psnr_gt': psrn_gt}, commit=True)
-    return total_loss, out_np, psrn_gt
+    return total_loss, out_hr_np, psrn_gt
 
 
 p = get_params(OPT_OVER, net, net_input=vid_dataset.input)
@@ -236,10 +242,10 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, vid_dataset.freq_dict['method'],
                        '{}-PIP'.format(mode)],
-                 name='{}_depth_{}_{}_{}_sigma_{}'.format(filename, input_depth, '{}'.format(INPUT),
-                                                                          mode, sigma),
+                 name='{}_depth_{}_{}_{}_spatial_factor_{}_temporal_factor_{}'.format(
+                     filename, input_depth, '{}'.format(INPUT), mode, spatial_factor, temporal_factor),
                  job_type='{}_{}'.format(INPUT, LR),
-                 group='Denoising - Video',
+                 group='Spatial SR - Video',
                  mode='online',
                  save_code=True,
                  config=log_config,
@@ -253,6 +259,9 @@ wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)
 print(net)
 n_batches = vid_dataset.n_batches
 img_idx = []
+downsampler = DownsamplingSequence(factor=spatial_factor)
+downsampler.set_dtype(dtype)
+
 for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch', position=0):
     running_psnr = 0.
     running_loss = 0.
