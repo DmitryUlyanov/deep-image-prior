@@ -34,7 +34,7 @@ parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--num_freqs', default=8, type=int)
 args = parser.parse_args()
 
-os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+# os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 imsize = -1
 PLOT = True
 mode = ['2d', '3d'][0]
@@ -59,7 +59,7 @@ vid_dataset_eval = VideoDataset(args.input_vid_path,
                                 task='temporal_sr',
                                 crop_shape=None,
                                 batch_size=6,
-                                temp_stride=temporal_factor,
+                                temp_stride=1,
                                 spatial_factor=spatial_factor,
                                 mode='cont',
                                 arch_mode='2d',

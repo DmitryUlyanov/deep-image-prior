@@ -54,7 +54,7 @@ if args.index == -1:
         fnames_list = fnames_list[args.dataset_index:args.dataset_index + 1]
     dataset_tag = dataset_path.split('/')[-2]
 elif args.index == -2:
-    base_path = './data/videos/tennis'
+    base_path = './data/videos/blackswan_cropped_30'
     save_dir = 'plots/{}/sr'.format(base_path.split('/')[-1])
     os.makedirs(save_dir, exist_ok=True)
     fnames = sorted(glob.glob(base_path + '/*.png'))
