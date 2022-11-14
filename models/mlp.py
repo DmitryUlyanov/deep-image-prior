@@ -18,6 +18,7 @@ class MLP(nn.Module):
     def forward(self, x):
         x = x.permute(0, 2, 3, 1)
         shape = x.shape[:-1]
-        x = self.layers(x.view(-1, x.shape[-1]))
-        x = F.sigmoid(x)
-        return x.view(*shape, -1).permute(0, 3, 1, 2)
+        # x = self.layers(x.view(-1, x.shape[-1]))
+        x = self.layers(x.reshape(-1, x.shape[-1]))
+        # x = F.sigmoid(x)
+        return x.reshape(*shape, -1).permute(0, 3, 1, 2)

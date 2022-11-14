@@ -110,7 +110,7 @@ else:
     #            need1x1_up=True, need_sigmoid=True, need_bias=True, pad='reflection',
     #            act_fun='LeakyReLU').type(dtype)
 
-    net = MLP(input_depth, 3, [256 for _ in range(12)])
+    net = MLP(input_depth, 3, [256 for _ in range(12)]).type(dtype)
 
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])
@@ -219,7 +219,7 @@ run = wandb.init(project="Fourier features DIP",
                      filename, input_depth, '{}'.format(INPUT), mode, spatial_factor, temporal_factor),
                  job_type='sequential_{}_{}'.format(INPUT, LR),
                  group='Video - Temporal SR',
-                 mode='online',
+                 mode='offline',
                  save_code=True,
                  config=log_config,
                  notes=''
