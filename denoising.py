@@ -54,7 +54,7 @@ if args.index == -1:
     if args.dataset_index != -1:
         fnames_list = fnames[args.dataset_index:args.dataset_index + 1]
 elif args.index == -2:
-    base_path = './data/videos/car_shadow_cropped_30'
+    base_path = './data/videos/blackswan_cropped_30'
     save_dir = 'plots/{}/denoising'.format(base_path.split('/')[-1])
     os.makedirs(save_dir, exist_ok=True)
     # fnames = sorted(glob.glob('./data/videos/rollerblade/*.png'))
@@ -287,7 +287,7 @@ for fname in fnames_list:
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
                            'denoising'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='car_shadow_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
+                     job_type='blackswan_{}_{}_{}_{}'.format(INPUT, LR, args.num_freqs, args.freq_lim),
                      group='Denoising - video baseline',
                      mode='online',
                      save_code=True,

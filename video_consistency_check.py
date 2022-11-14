@@ -236,41 +236,93 @@ def main():
     dataset = {
         'blackswan': {
             'gt': './data/eval_vid/clean_videos/blackswan.avi',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/blackswan_pip.mp4',
-            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/blackswan.mp4',
-            '3d-dip': '',
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/blackswan_pip.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/blackswan.mp4',
+                '3d-dip': ''
+            },
+            'spatial_sr': {
+
+            },
             'ignore_index': 2
         },
         'rollerblade': {
             'gt': './data/eval_vid/clean_videos/rollerblade.avi',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/rollerblade_5000.mp4',
-            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/rollerblade.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/rollerblade_3d_dip_10.mp4',
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/rollerblade_5000.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/rollerblade.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/rollerblade_3d_dip_10.mp4',
+            },
+            'spatial_sr':{
+
+            },
             'ignore_index': 5
         },
         'tennis(40 frames)': {
             'gt': './data/eval_vid/clean_videos/tennis.avi',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/tennis_40_frames.mp4',
-            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/tennis.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/tennis_3d_dip_12.mp4',
-            'ignore_index': 0
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/tennis_40_frames.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/tennis.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/tennis_3d_dip_12.mp4',
+            },
+            'spatial_sr': {
+                'pip': './data/eval_vid/spatial_sr/pip/tennis_spatial_sr_factor_4_pip.mp4',
+                'dip': './data/eval_vid/spatial_sr/dip/tennis_spatial_sr_factor_4_dip.mp4',
+                '3d-dip': './data/eval_vid/spatial_sr/3d_dip/tennis_spatial_sr_factor_4_3d_dip.mp4',
+            },
+            'ignore_index': 4
         },
         'judo': {
             'gt': './data/eval_vid/clean_videos/judo.mp4',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/judo.mp4',
-            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/judo.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/judo_3d_dip_10.mp4',
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/judo.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/judo.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/judo_3d_dip_10.mp4',
+            },
+            'spatial_sr':{
+
+            },
             'ignore_index': 4
         },
         'dog': {
             'gt': './data/eval_vid/clean_videos/dog.mp4',
-            'temp-pip': './data/eval_vid/denoised_videos/pip/dog.mp4',
-            'frame-by-frame': './data/eval_vid/denoised_videos/frame_by_frame/dog.mp4',
-            '3d-dip': './data/eval_vid/denoised_videos/3d_dip/dog_3d_dip_10.mp4',
+            'denoising':{
+                'pip': './data/eval_vid/denoised_videos/pip/dog.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/dog.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/dog_3d_dip_10.mp4',
+            },
+            'spatial_sr':{
+
+            },
             'ignore_index': 1
         },
+        'car_shadow': {
+            'gt': './data/eval_vid/clean_videos/car_shadow_gt.mp4',
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/car_shadow_30.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/car_shadow_30_dip.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/car_shadow_3d_dip_30_frames.mp4',
+            },
+            'spatial_sr': {
+
+            },
+            'ignore_index': 0
+        },
+        'camel': {
+            'gt': './data/eval_vid/clean_videos/camel_gt.mp4',
+            'denoising': {
+                'pip': './data/eval_vid/denoised_videos/pip/camel_30.mp4',
+                'dip': './data/eval_vid/denoised_videos/frame_by_frame/camel_30_frames_dip.mp4',
+                '3d-dip': './data/eval_vid/denoised_videos/3d_dip/car_shadow_3d_dip_30_frames.mp4',
+            },
+            'spatial_sr': {
+
+            },
+            'ignore_index': 0
+        }
     }
-    chosen_video = [dataset['rollerblade'], dataset['dog'], dataset['blackswan'], dataset['judo']][3]
+    task = ['denoising', 'spatial_sr'][0]
+    chosen_video = dataset['camel']
     vid_gt = VideoDataset(chosen_video['gt'],
                           input_type='noise',
                           num_freqs=8,
@@ -280,7 +332,7 @@ def main():
                           arch_mode='3d',
                           mode='cont')
 
-    vid_denoised = VideoDataset(chosen_video['temp-pip'],
+    vid_pip = VideoDataset(chosen_video[task]['pip'],
                                 input_type='noise',
                                 num_freqs=8,
                                 task='denoising',
@@ -289,7 +341,7 @@ def main():
                                 arch_mode='2d',
                                 mode='cont')
 
-    vid_denoised_frame_by_frame = VideoDataset(chosen_video['frame-by-frame'],
+    vid_dip = VideoDataset(chosen_video[task]['dip'],
                                                input_type='noise',
                                                num_freqs=8,
                                                task='denoising',
@@ -298,7 +350,7 @@ def main():
                                                arch_mode='2d',
                                                mode='cont')
 
-    vid_denoised_3d_dip = VideoDataset(chosen_video['3d-dip'],
+    vid_3d_dip = VideoDataset(chosen_video[task]['3d-dip'],
                                        input_type='noise',
                                        num_freqs=8,
                                        task='denoising',
@@ -308,34 +360,33 @@ def main():
                                        mode='cont')
 
     gt = vid_gt.get_all_gt().cuda()
-    denoised = vid_denoised.get_all_gt().cuda()
-    denoised_f_b_f = vid_denoised_frame_by_frame.get_all_gt().cuda()
-    denoised_3d_dip = vid_denoised_3d_dip.get_all_gt().cuda()
+    pip = vid_pip.get_all_gt().cuda()
+    dip = vid_dip.get_all_gt().cuda()
+    dip_3d = vid_3d_dip.get_all_gt().cuda()
 
     # remove edges  | rollerblade: 5 | dog: 1 | Blackswan: 2 | Judo: 4
     remove_edges_start_index = chosen_video['ignore_index']
-    if 0 < remove_edges_start_index < 2:
+    if 0 <= remove_edges_start_index < 2:
         remove_edges_start_index = 2
-    elif remove_edges_start_index > 2:
-        gt = gt[2:-remove_edges_start_index]
-        denoised_f_b_f = denoised_f_b_f[2:-remove_edges_start_index]
-        denoised_3d_dip = denoised_3d_dip[2:-remove_edges_start_index]
 
-    denoised = denoised[2:-(remove_edges_start_index + 1)]
+    gt = gt[2:-remove_edges_start_index]
+    dip = dip[2:-remove_edges_start_index]
+    dip_3d = dip_3d[2:-remove_edges_start_index]
+    pip = pip[2:-(remove_edges_start_index + 1)]
 
     ssim_loss = SSIM3D(window_size=11)
     print('3D-SSIM')
-    print('temp-pip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
-                                              denoised.permute(1, 0, 2, 3).unsqueeze(0))))
-    print('frame-by-frame: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
-                                                    denoised_f_b_f.permute(1, 0, 2, 3).unsqueeze(0))))
+    print('pip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+                                              pip.permute(1, 0, 2, 3).unsqueeze(0))))
+    print('dip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
+                                                    dip.permute(1, 0, 2, 3).unsqueeze(0))))
     print('3d-dip: {:.4f}'.format(ssim_loss(gt.permute(1, 0, 2, 3).unsqueeze(0),
-                                            denoised_3d_dip.permute(1, 0, 2, 3).unsqueeze(0))))
+                                            dip_3d.permute(1, 0, 2, 3).unsqueeze(0))))
 
     print('Avg. PSNR')
-    print('temp-pip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised.cpu().numpy())))
-    print('frame-by-frame: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_f_b_f.cpu().numpy())))
-    print('3d-dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), denoised_3d_dip.cpu().numpy())))
+    print('pip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), pip.cpu().numpy())))
+    print('dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), dip.cpu().numpy())))
+    print('3d-dip: {:.4f}'.format(avg_psnr(gt.cpu().numpy(), dip_3d.cpu().numpy())))
 
 
 if __name__ == '__main__':

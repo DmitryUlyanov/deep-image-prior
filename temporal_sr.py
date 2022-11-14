@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import random
 
-from models import skip
+from models import skip, MLP
 from models.skip_3d import skip_3d
 from utils.denoising_utils import *
 from utils.wandb_utils import *
@@ -98,17 +98,19 @@ if INPUT == 'noise':
 else:
     input_depth = args.num_freqs * 6  # 4 * F for spatial encoding, 2 * F for temporal encoding
     # input_depth = args.num_freqs * 4 + 1  # 4 * F for spatial encoding,
-    net = skip(input_depth, 3,
-               num_channels_down=[256, 256, 256, 256, 256, 256],
-               num_channels_up=[256, 256, 256, 256, 256, 256],
-               num_channels_skip=[8, 8, 8, 8, 8, 8],
-               filter_size_up=1,
-               filter_size_down=1,
-               filter_skip_size=1,
-               upsample_mode='bilinear',
-               downsample_mode='stride',
-               need1x1_up=True, need_sigmoid=True, need_bias=True, pad='reflection',
-               act_fun='LeakyReLU').type(dtype)
+    # net = skip(input_depth, 3,
+    #            num_channels_down=[256, 256, 256, 256, 256, 256],
+    #            num_channels_up=[256, 256, 256, 256, 256, 256],
+    #            num_channels_skip=[8, 8, 8, 8, 8, 8],
+    #            filter_size_up=1,
+    #            filter_size_down=1,
+    #            filter_skip_size=1,
+    #            upsample_mode='bilinear',
+    #            downsample_mode='stride',
+    #            need1x1_up=True, need_sigmoid=True, need_bias=True, pad='reflection',
+    #            act_fun='LeakyReLU').type(dtype)
+
+    net = MLP(input_depth, 3, [256 for _ in range(12)])
 
 # Compute number of parameters
 s = sum([np.prod(list(p.size())) for p in net.parameters()])
@@ -213,7 +215,7 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, vid_dataset.freq_dict['method'],
                        'PIP'],
-                 name='{}_depth_{}_{}_{}_spatial_factor_{}_temporal_factor_{}'.format(
+                 name='MLP_{}_depth_{}_{}_{}_spatial_factor_{}_temporal_factor_{}'.format(
                      filename, input_depth, '{}'.format(INPUT), mode, spatial_factor, temporal_factor),
                  job_type='sequential_{}_{}'.format(INPUT, LR),
                  group='Video - Temporal SR',
@@ -230,8 +232,8 @@ wandb.run.log_code(".", exclude_fn=lambda path: path.find('venv') != -1)
 print(net)
 n_batches = vid_dataset.n_batches
 
-ckpt = torch.load('/mnt5/nimrod/deep-image-prior/temporal_sr_checkpoint_2000.pth')
-net.load_state_dict(ckpt['model_state_dict'])
+# ckpt = torch.load('/mnt5/nimrod/deep-image-prior/temporal_sr_checkpoint_2000.pth')
+# net.load_state_dict(ckpt['model_state_dict'])
 eval_video(vid_dataset_eval, net, 0)
 for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch'):
     batch_cnt = 0
