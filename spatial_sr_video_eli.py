@@ -13,11 +13,11 @@ import torch.optim
 import matplotlib.pyplot as plt
 
 import os
-import wandb
 import argparse
 import numpy as np
 import tqdm
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+import csv
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -75,6 +75,7 @@ def eval_video(val_dataset, model, epoch):
 
     video_name = os.path.basename(args.input_vid_path[:-len('.avi')])
     os.makedirs('output/' + video_name, exist_ok=True)
+    csv_writer.writerow([epoch, psnr_whole_video])
     for i in range(val_dataset.n_frames):
         plt.imsave('output/{}/out_frame_{}_{}.png'.format(video_name, epoch, i),
                    img_for_video[i, :, :, :].transpose(1, 2, 0))
@@ -230,6 +231,11 @@ img_idx = []
 downsampler = DownsamplingSequence(factor=spatial_factor)
 downsampler.set_dtype(dtype)
 
+video_name = os.path.basename(args.input_vid_path[:-len('.avi')])
+os.makedirs('output/' + video_name, exist_ok=True)
+f_csv = f = open('output/' + video_name + '/psnr.csv', 'w')
+csv_writer = csv.writer(f)
+
 for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch', position=0):
     running_psnr = 0.
     running_loss = 0.
@@ -251,3 +257,5 @@ for epoch in tqdm.tqdm(range(n_epochs), desc='Epoch', position=0):
 
 # Infer video at the end:
 eval_video(vid_dataset_eval, net, epoch)
+
+f.close()
