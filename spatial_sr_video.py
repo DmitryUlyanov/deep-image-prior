@@ -67,7 +67,7 @@ def eval_video(val_dataset, model, epoch):
 
             out_np = out.detach().cpu().numpy()
 
-            img_for_psnr[batch_data['cur_batch']] = np.array([put_in_center(o, spatial_size) for o in out_np])
+            img_for_psnr[batch_data['cur_batch']] = out_np
             out_rgb = np.array([np_cvt_color(o) for o in out_np])
             img_for_video[batch_data['cur_batch']] = (out_rgb * 255).astype(np.uint8)
 
@@ -160,9 +160,9 @@ else:
                           act_fun='LeakyReLU').type(dtype)
     else:
         net = skip(input_depth, 3,
-                   num_channels_down=[256, 256, 256, 256, 256, 256],
-                   num_channels_up=[256, 256, 256, 256, 256, 256],
-                   num_channels_skip=[8, 8, 8, 8, 8, 8],
+                   num_channels_down=[256, 256, 256, 512, 512, 512],
+                   num_channels_up=[256, 256, 256, 512, 512, 512],
+                   num_channels_skip=[8, 8, 8, 16, 16, 16],
                    filter_size_up=1,
                    filter_size_down=1,
                    filter_skip_size=1,

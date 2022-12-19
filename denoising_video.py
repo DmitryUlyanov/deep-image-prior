@@ -122,7 +122,7 @@ OPTIMIZER = 'adam'  # 'LBFGS'
 exp_weight = 0.99
 if mode == '2d':
     show_every = 300  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
-    n_epochs = 10000  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
+    n_epochs = 5000  # * (vid_dataset.n_frames // vid_dataset.batch_size + 1)
 
 
 num_iter = 1

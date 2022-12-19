@@ -64,8 +64,9 @@ img_dict = {
 
 INPUT = ['noise', 'fourier', 'meshgrid', 'infer_freqs'][args.input_index]
 if args.index == -1:
-    # fnames = sorted(glob.glob('data/inpainting_scribble_dataset/*.*'))
-    fnames = sorted(glob.glob('data/inpainting_text_dataset/*.*'))
+    # fnames = sorted(glob.glob('data/inpainitng_scribble_set5/*.*'))
+    fnames = sorted(glob.glob('data/inpainting_scribble_dataset/*.*'))
+    # fnames = sorted(glob.glob('data/inpainting_text_dataset/*.*'))
     mask_paths = [f for f in fnames if 'mask' in f]
     img_paths = [f for f in fnames if 'mask' not in f]
 
@@ -92,7 +93,7 @@ img_mask_var = np_to_torch(img_mask_np).type(dtype)
 plot_image_grid([img_np, img_mask_np, img_mask_np * img_np], 3, 11)
 
 freq_dict = {
-        'method': 'random',
+        'method': 'log',
         'cosine_only': False,
         'n_freqs': args.num_freqs,
         'base': 2 ** (8 / (args.num_freqs-1))
@@ -102,8 +103,8 @@ OPTIMIZER = 'adam'
 
 if 'vase.png' in img_path:
     # INPUT = 'meshgrid' # 'infer_freqs'
-    input_depth = args.num_freqs * 4
-    LR = args.learning_rate
+    input_depth = freq_dict['n_freqs'] * 4
+    LR = 0.01
     num_iter = 8001
     param_noise = False
     show_every = 50
@@ -130,7 +131,7 @@ elif ('kate.png' in img_path) or ('peppers.png' in img_path):
     # Same params and net as in super-resolution and denoising
     # INPUT = 'infer_freqs'  # 'fourier'  # 'noise'
     input_depth = args.num_freqs * 4
-    LR = args.learning_rate
+    LR = 0.01
     num_iter = 6001
     param_noise = False
     show_every = 50
@@ -207,20 +208,32 @@ elif 'library.png' in img_path:
     else:
         assert False
 else:
-    input_depth = args.num_freqs * 4
+    input_depth = 1 if INPUT == 'noise' else args.num_freqs * 4
     LR = args.learning_rate
-    num_iter = 6001
+    num_iter = 3000
     param_noise = False
     show_every = 50
     figsize = 5
     reg_noise_std = 0.03
 
+    # net = skip(input_depth, img_np.shape[0],
+    #            num_channels_down=[128] * 6,
+    #            num_channels_up=[128] * 6,
+    #            num_channels_skip=[4] * 6,
+    #            # num_channels_down=[16, 32, 64, 128, 128, 128][:6],
+    #            # num_channels_up=[16, 32, 64, 128, 128, 128][:6],
+    #            # num_channels_skip=[4, 4, 4, 4, 4, 4][:6],
+    #            filter_size_up=1, filter_size_down=1,
+    #            upsample_mode='bilinear', filter_skip_size=1,
+    #            need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
+
     net = skip(input_depth, img_np.shape[0],
-               num_channels_down=[128] * 5,
-               num_channels_up=[128] * 5,
-               num_channels_skip=[4] * 5,
-               filter_size_up=1, filter_size_down=1,
-               upsample_mode='bilinear', filter_skip_size=1,
+               num_channels_down=[16, 32, 64, 128, 128, 128][:6],
+               num_channels_up=[16, 32, 64, 128, 128, 128][:6],
+               num_channels_skip=[0, 0, 0, 0, 0, 0][:6],
+               filter_size_up=3, filter_size_down=5, filter_skip_size=1,
+               upsample_mode='nearest',  # downsample_mode='avg',
+               need1x1_up=False,
                need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
 
 net = net.type(dtype)
@@ -325,7 +338,7 @@ run = wandb.init(project="Fourier features DIP",
                  entity="impliciteam",
                  tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method']],
                  name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                 job_type='{}_{}'.format(LR, INPUT),
+                 job_type='Set5_{}_{}'.format(LR, INPUT),
                  group='Inpainting',
                  mode='online',
                  save_code=True,
@@ -362,6 +375,8 @@ else:
     net_input = net_input_saved
 
 out_np = torch_to_np(net(net_input))
+os.makedirs('./plots/inpainting/', exist_ok=True)
+plt.imsave('./plots/inpainting/{}_{}_{}.png'.format(filename, INPUT, psnr_gt_list[-1]), np.clip(out_np.transpose(1, 2, 0), 0, 1))
 # log_images(np.array([np.clip(out_np, 0, 1), img_np]), num_iter, task='Inpainting')
 # log_images(np.array([np.clip(best_img, 0, 1), img_np]), best_iter, task='Best Image', psnr=best_psnr_gt)
 log_images(np.array([np.clip(out_np, 0, 1)]), num_iter, task='Inpainting')

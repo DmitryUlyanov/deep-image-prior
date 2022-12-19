@@ -47,17 +47,17 @@ show_every = 100
 # e.g. x4/zebra_GT.png for factor=4, and x8/zebra_GT.png for factor=8
 
 if args.index == -1:
-    dataset_path = 'data/sr_datasets/Set14/images'
+    dataset_path = 'data/sr_datasets/Set5/images'
     fnames_list = sorted(glob.glob(dataset_path + '/*.*'))
     fnames = fnames_list
     if args.dataset_index != -1:
         fnames_list = fnames_list[args.dataset_index:args.dataset_index + 1]
     dataset_tag = dataset_path.split('/')[-2]
 elif args.index == -2:
-    base_path = './data/videos/blackswan_cropped_30'
+    base_path = './data/videos/dog'
     save_dir = 'plots/{}/sr'.format(base_path.split('/')[-1])
     os.makedirs(save_dir, exist_ok=True)
-    fnames = sorted(glob.glob(base_path + '/*.png'))
+    fnames = sorted(glob.glob(base_path + '/*.jpg'))
     fnames_list = fnames
 else:
     fnames = ['data/sr/zebra_GT.png', 'data/denoising/F16_GT.png', 'data/inpainting/kate.png']
@@ -100,7 +100,7 @@ for path_to_image in fnames_list:
         input_depth = args.num_freqs * 4
 
     if factor == 4:
-        num_iter = 2001
+        num_iter = 2000
         reg_noise_std = 0.03
     elif factor == 8:
         num_iter = 4001
@@ -118,6 +118,7 @@ for path_to_image in fnames_list:
                   skip_n33u=128,
                   skip_n11=4,
                   num_scales=5,
+                  act_fun='Gaussian',
                   upsample_mode='bilinear').type(dtype)
     # net = MLP(input_depth, out_dim=output_depth, hidden_list=[256 for _ in range(10)]).type(dtype)
     # net = FCN(input_depth, out_dim=output_depth, hidden_list=[256, 256, 256, 256]).type(dtype)
@@ -216,11 +217,12 @@ for path_to_image in fnames_list:
     run = wandb.init(project="Fourier features DIP",
                      entity="impliciteam",
                      tags=['{}'.format(INPUT), 'depth:{}'.format(input_depth), filename, freq_dict['method'],
-                            'freq_lim: {}'.format(args.freq_lim), 'sr'],
+                            'freq_lim: {}'.format(args.freq_lim), 'sr', 'rebattle', 'gauss_act_func', 'a_learned'],
                      name='{}_depth_{}_{}'.format(filename, input_depth, '{}'.format(INPUT)),
-                     job_type='tennis_{}_{}_freq_lim_{}_num_freqs_{}'.format(INPUT, LR, args.freq_lim,
+                     job_type='{}_{}_{}_freq_lim_{}_num_freqs_{}'.format('_',
+                                                                         INPUT, LR, args.freq_lim,
                                                                                  args.num_freqs),
-                     group='Super-Resolution - video baseline',
+                     group='Super-Resolution - Dataset x4',
                      mode='online',
                      save_code=True,
                      config=log_config,

@@ -7,20 +7,22 @@ import os
 import numpy as np
 
 
-SOURCE_DATASET = './data/denoising_dataset/'
-TARGET_DATASET = ['./data/inpainting_scribble_dataset/', './data/inpainting_text_dataset'][1]
+SOURCE_DATASET = './data/sr_datasets/Set5/images/' #'./data/denoising_dataset/'  #
+TARGET_DATASET = ['./data/inpainting_scribble_dataset/', './data/inpainting_text_dataset',
+                  './data/inpainitng_scribble_set5/'][2]
 os.makedirs(TARGET_DATASET, exist_ok=True)
 source_imgs = sorted(glob.glob(SOURCE_DATASET + '/*.png'))
 
-for src_img_path in tqdm.tqdm(source_imgs):
+
+for src_img_path in tqdm.tqdm(source_imgs[1:2]):
     src_img_name = os.path.basename(src_img_path)
     dst_img_path = os.path.join(TARGET_DATASET, src_img_name)
     shutil.copy(src_img_path, dst_img_path)
     img_pil = Image.open(src_img_path)
     img_np = np.array(img_pil)
-    # curr_mask = get_random_img_mask(img_np)
-    curr_mask = gen_text_mask(img_np)
+    curr_mask = get_random_img_mask(img_np)
+    # curr_mask = gen_text_mask(img_np)
     curr_mask_pil = Image.fromarray((curr_mask).astype(np.uint8))
-    curr_mask_pil.save(os.path.join(TARGET_DATASET, 'mask_{}'.format(src_img_name)))
+    # curr_mask_pil.save(os.path.join(TARGET_DATASET, 'mask_{}'.format(src_img_name)))
 
 

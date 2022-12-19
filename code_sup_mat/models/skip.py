@@ -8,7 +8,7 @@ def skip(
         filter_size_down=3, filter_size_up=3, filter_skip_size=1,
         need_sigmoid=True, need_bias=True, 
         pad='zero', upsample_mode='nearest', downsample_mode='stride', act_fun='LeakyReLU', 
-        need1x1_up=True, gaussian_a=None):
+        need1x1_up=True):
     """Assembles encoder-decoder with skip connections.
 
     Arguments:
@@ -57,17 +57,17 @@ def skip(
         if num_channels_skip[i] != 0:
             skip.add(conv(input_depth, num_channels_skip[i], filter_skip_size, bias=need_bias, pad=pad))
             skip.add(bn(num_channels_skip[i]))
-            skip.add(act(act_fun, a=gaussian_a))
+            skip.add(act(act_fun))
             
         # skip.add(Concat(2, GenNoise(nums_noise[i]), skip_part))
 
         deeper.add(conv(input_depth, num_channels_down[i], filter_size_down[i], 2, bias=need_bias, pad=pad, downsample_mode=downsample_mode[i]))
         deeper.add(bn(num_channels_down[i]))
-        deeper.add(act(act_fun, a=gaussian_a))
+        deeper.add(act(act_fun))
 
         deeper.add(conv(num_channels_down[i], num_channels_down[i], filter_size_down[i], bias=need_bias, pad=pad))
         deeper.add(bn(num_channels_down[i]))
-        deeper.add(act(act_fun, a=gaussian_a))
+        deeper.add(act(act_fun))
 
         deeper_main = nn.Sequential()
 
@@ -82,13 +82,13 @@ def skip(
 
         model_tmp.add(conv(num_channels_skip[i] + k, num_channels_up[i], filter_size_up[i], 1, bias=need_bias, pad=pad))
         model_tmp.add(bn(num_channels_up[i]))
-        model_tmp.add(act(act_fun, a=gaussian_a))
+        model_tmp.add(act(act_fun))
 
 
         if need1x1_up:
             model_tmp.add(conv(num_channels_up[i], num_channels_up[i], 1, bias=need_bias, pad=pad))
             model_tmp.add(bn(num_channels_up[i]))
-            model_tmp.add(act(act_fun, a=gaussian_a))
+            model_tmp.add(act(act_fun))
 
         input_depth = num_channels_down[i]
         model_tmp = deeper_main

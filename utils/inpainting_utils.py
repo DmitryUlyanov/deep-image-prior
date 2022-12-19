@@ -36,22 +36,22 @@ def get_random_img_mask(for_image):
         raise Exception("Width and Height of mask must be at least 64!")
 
     # Draw random lines
-    x1, x2 = randint(1, W), randint(1, W)
-    y1, y2 = randint(1, H), randint(1, H)
+    x1, x2 = randint(W//4, 3*(W//4)), randint(W//3, 3*(W//4))
+    y1, y2 = randint(H//4, 3*(H//4)), randint(H//4, 3*(H//4))
     thickness = randint(3, size)
     cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), thickness)
 
     # Draw random circles
-    x1, y1 = randint(1, W), randint(1, H)
+    x1, y1 = randint(W//4, 3*(W//4)), randint(H//4, 3*(H//4))
     radius = randint(3, size)
     cv2.circle(img, (x1, y1), radius, (255, 255, 255), -1)
 
     # Draw random ellipses
-    x1, y1 = randint(1, W), randint(1, H)
-    s1, s2 = randint(1, W), randint(1, H)
-    a1, a2, a3 = randint(3, 180), randint(3, 180), randint(3, 180)
-    thickness = randint(3, size)
-    cv2.ellipse(img, (x1, y1), (s1, s2), a1, a2, a3, (255, 255, 255), thickness)
+    # x1, y1 = randint(1, W), randint(1, H)
+    # s1, s2 = randint(1, W), randint(1, H)
+    # a1, a2, a3 = randint(3, 180), randint(3, 180), randint(3, 180)
+    # thickness = randint(3, size)
+    # cv2.ellipse(img, (x1, y1), (s1, s2), a1, a2, a3, (255, 255, 255), thickness)
 
     return 255 - img
 

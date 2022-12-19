@@ -73,7 +73,7 @@ class Swish(nn.Module):
         return x * self.s(x)
 
 
-def act(act_fun = 'LeakyReLU'):
+def act(act_fun='LeakyReLU', a=1.):
     '''
         Either string defining an activation function or module (e.g. nn.ReLU)
     '''
@@ -86,6 +86,8 @@ def act(act_fun = 'LeakyReLU'):
             return nn.ELU()
         elif act_fun == 'none':
             return nn.Sequential()
+        elif act_fun == 'Gaussian':
+            return GaussianActivation(trainable=False, a=a)
         else:
             assert False
     else:
@@ -143,3 +145,13 @@ class AvgPool3D(nn.Module):
             x = self.avg_pool3d(x)
 
         return x
+
+
+# Code from: https://github.com/kwea123/Coordinate-MLPs/tree/master
+class GaussianActivation(nn.Module):
+    def __init__(self, a=1., trainable=True):
+        super().__init__()
+        self.register_parameter('a', nn.Parameter(a*torch.ones(1), trainable))
+
+    def forward(self, x):
+        return torch.exp(-x**2/(2*self.a**2))

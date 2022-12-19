@@ -90,8 +90,6 @@ class VideoDataset:
             self.images.append(np_to_torch(frame))
             if task == 'denoising':
                 self.degraded_images.append(np_to_torch(get_noisy_image(frame, self.sigma)[-1]))
-            elif task == 'temporal_sr':
-                self.degraded_images.append(np_to_torch(frame))
             elif task == 'spatial_sr':
                 self.degraded_images.append(np_to_torch(self.downsampler.downsmaple_sequence(np.expand_dims(frame, axis=0))[0]))
 
@@ -234,9 +232,6 @@ class VideoDataset:
                                    freq_dict=self.freq_dict).repeat(self.n_frames, 1, 1, 1)
         if self.input_type != 'noise':
             self.add_sequence_positional_encoding()
-
-        if self.input_type == 'infer_freqs':
-            self.input = self.input.unsqueeze(0).repeat(35, 1)
 
     def generate_random_crops(self, inp, gt):
         B, _, H, W = inp.shape
